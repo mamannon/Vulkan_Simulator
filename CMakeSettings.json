@@ -1,0 +1,88 @@
+﻿{
+  "configurations": [
+    {
+      "name": "x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "variables": [
+        {
+          "name": "Qt5_DIR",
+          "value": "C:/Qt/5.12.12/msvc2017_64/lib/cmake/Qt5",
+          "type": "PATH"
+        },
+        {
+          "name": "NLOHMANN_JSON_INCLUDE_DIRS",
+          "value": "C:/vcpkg/packages/nlohmann-json_x64-windows/include",
+          "type": "PATH"
+        },
+        {
+          "name": "STB_INCLUDE_DIRS",
+          "value": "C:/vcpkg/packages/stb_x64-windows/include",
+          "type": "PATH"
+        },
+        {
+          "name": "GLM_INCLUDE_DIRS",
+          "value": "C:/vcpkg/packages/glm_x64-windows/include",
+          "type": "PATH"
+        },
+        {
+          "name": "VULKAN_DIRS",
+          "value": "C:/VulkanSDK/1.2.198.1/Include",
+          "type": "PATH"
+        }
+      ]
+    },
+    {
+      "name": "Linux-GCC-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "cmakeExecutable": "cmake",
+      "remoteCopySourcesExclusionList": [ ".vs", ".git", "out" ],
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "inheritEnvironments": [ "linux_x64" ],
+      "remoteMachineName": "${defaultRemoteMachineName}",
+      "remoteCMakeListsRoot": "$HOME/.vs/${projectDirName}/${workspaceHash}/src",
+      "remoteBuildRoot": "$HOME/.vs/${projectDirName}/${workspaceHash}/out/build/${name}",
+      "remoteInstallRoot": "$HOME/.vs/${projectDirName}/${workspaceHash}/out/install/${name}",
+      "remoteCopySources": true,
+      "rsyncCommandArgs": "-t --delete --delete-excluded",
+      "remoteCopyBuildOutput": false,
+      "remoteCopySourcesMethod": "rsync",
+      "variables": [
+        {
+          "name": "Qt5_DIR",
+          "value": "/home/mikael/Qt/5.12.12/gcc_64/lib/cmake/Qt5",
+          "type": "PATH"
+        },
+        {
+          "name": "NLOHMANN_JSON_INCLUDE_DIRS",
+          "value": "/usr/include/nlohmann",
+          "type": "PATH"
+        },
+        {
+          "name": "STB_INCLUDE_DIRS",
+          "value": "/usr/include/stb",
+          "type": "PATH"
+        },
+        {
+          "name": "GLM_INCLUDE_DIRS",
+          "value": "/usr/include/glm",
+          "type": "PATH"
+        },
+        {
+          "name": "VULKAN_INCLUDE_DIRS",
+          "value": "/usr/include/vulkan",
+          "type": "PATH"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "version": "0.2.1",
+  "defaults": {},
+  "configurations": [
+    {
+      "type": "x64-Degug",
+      "project": "CMakeLists.txt",
+      "projectTarget": "Vulkan_Simulator.exe",
+      "name": "Vulkan_Simulator.exe"
+    },
+    {
+      "type": "cppgdb",
+      "name": "Vulkan_Simulator",
+      "project": "CMakeLists.txt",
+      "projectTarget": "Vulkan_Simulator",
+      "debuggerConfiguration": "gdb",
+      "args": [],
+      "env": {},
+      "pipeTransport": {
+        "pipeProgram": "${debugInfo.shellexecPath}",
+        "pipeArgs": [
+          "/s",
+          "${debugInfo.remoteMachineId}",
+          "/p",
+          "${debugInfo.parentProcessId}",
+          "/c",
+          "export DISPLAY=:0;${debuggerCommand}",
+          "--tty=${debugInfo.tty}"
+        ],
+        "pipeCmd": [
+          "/s",
+          "${debugInfo.remoteMachineId}",
+          "/p",
+          "${debugInfo.parentProcessId}",
+          "/c",
+          "${debuggerCommand}"
+        ]
+      }
+    }
+  ]
+}
