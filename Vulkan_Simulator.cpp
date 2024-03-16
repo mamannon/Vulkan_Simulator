@@ -51,7 +51,7 @@ void VulkanWindow::release()
 
 /// <summary>
 ///Returns a QMatrix4x4 that can be used to correct for coordinate
-///system differences between OpenGLand Vulkan.
+///system differences between OpenGL and Vulkan.
 ///
 ///By pre - multiplying the projection matrix with this matrix, applications can
 ///continue to assume that Y is pointing upwards, and can set minDepthand
@@ -69,7 +69,7 @@ QMatrix4x4 VulkanWindow::clipCorrectionMatrix()
         // The QMatrix creator takes row-major.
         mClipCorrect = QMatrix4x4(1.0f, 0.0f, 0.0f, 0.0f,
             0.0f, -1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 0.5f, 0.5f,
+            0.0f, 0.0f, -1.0f, 0.5f,
             0.0f, 0.0f, 0.0f, 1.0f);
     }
     return mClipCorrect;
@@ -78,7 +78,11 @@ QMatrix4x4 VulkanWindow::clipCorrectionMatrix()
 void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
     mQInstance = &instance;
     mInstance = instance.vkInstance();
+
     setVulkanInstance(&instance);
+
+    QByteArrayList extensions = { "VK_EXT_debug_utils" };  // This doesn't work. Function vkSetDebugUtilsObjectNameEXT remains a null pointer.
+    instance.setExtensions(extensions);
 
     // Get window and Vulkan instance functions.
     mVulkanPointers.pVulkanWindow = this;
@@ -148,7 +152,7 @@ void VulkanWindow::init()
                 VK_API_VERSION_MINOR(physDeviceProps.driverVersion),
                 VK_API_VERSION_PATCH(physDeviceProps.driverVersion));
         }
-            
+
         if (physDeviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU && integrated == -1) {
             integrated = i;
             qDebug("Integrated device name: %s Driver version: %d.%d.%d",
@@ -220,11 +224,11 @@ void VulkanWindow::init()
         queueInfo[1].queueCount = 1;
         queueInfo[1].pQueuePriorities = prio;
     }
- 
+
     QVector<const char*> deviceExtensions;
     deviceExtensions.append("VK_KHR_swapchain");
 
-    VkDeviceCreateInfo devInfo {};
+    VkDeviceCreateInfo devInfo{};
     devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     devInfo.queueCreateInfoCount = graphicsQueueFamilyIndex == presentQueueFamilyIndex ? 1 : 2;
     devInfo.pQueueCreateInfos = queueInfo;
@@ -248,11 +252,6 @@ void VulkanWindow::init()
         vkGetDeviceQueue(mDevice, presentQueueFamilyIndex, 0, &mPresentQueue);
     }
 
-    VkCommandPoolCreateInfo poolInfo {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
-    err = vkCreateCommandPool(mDevice, &poolInfo, nullptr, &mCommandPool);
-    if (err != VK_SUCCESS) qFatal("Failed to create command pool: %d", err);
 }
 
 
@@ -334,7 +333,7 @@ void VulkanWindow::exposeEvent(QExposeEvent*) {
 
 bool VulkanWindow::event(QEvent* e) {
 
-    if (mRenderer!=nullptr && mStart==true) {
+    if (mRenderer != nullptr && mStart == true) {
         mStart = false;
         initSwapChainResources();
         mRenderer->render();
@@ -398,6 +397,7 @@ void VulkanWindow::initResources()
     mRenderer->setModelMatrix();
     mRenderer->createUniformBuffers();
     mRenderer->createGraphicsPipeline();
+    mRenderer->createSyncObjects();
 }
 
 /// <summary>
@@ -414,20 +414,25 @@ void VulkanWindow::initSwapChainResources()
     const QSize size = swapChainImageSize();
     proj1.perspective(45.0f, size.width() / (float)size.height(), 0.1f, 1000.0f);
 
+
+
     // Perspective projection parameters.
     // ...or this.
     float fov = 45.0f;
+    float aspectRatio = size.width() / (float)size.height();
     float nearZ = 0.1f;
     float farZ = 1000.0f;
-    float aspectRatio = size.width() / (float)size.height();
-    float t = 1.0f / tan(fov * M_PI / 180.0f * 0.5f);
-    float nf = nearZ - farZ;
-    
-    QMatrix4x4 proj2 = QMatrix4x4(t / aspectRatio, 0, 0, 0, 
-        0, t, 0, 0, 
-        0, 0, (-nearZ - farZ) / nf, (2 * nearZ * farZ) / nf, 
-        0, 0, 1, 0);
-       
+    float top = nearZ * std::tan(M_PI / 180 * fov / 2.0);
+    float bottom = -top;
+    float right = top * aspectRatio;
+    float left = -right;
+    QMatrix4x4 proj2 = QMatrix4x4(2 * nearZ / (right - left), 0, (right + left) / (right - left), 0,
+        0, 2 * nearZ / (top - bottom), (top + bottom) / (top - bottom), 0,
+        0, 0, -(farZ + nearZ) / (farZ - nearZ), -(2 * farZ * nearZ) / (farZ - nearZ),
+        0, 0, -1, 0);
+
+    proj2 = proj2 * clipCorrectionMatrix();
+
     mRenderer->setProjectionMatrix(proj2.data());
 
     // Then create swap chain.
@@ -457,6 +462,7 @@ void VulkanWindow::releaseResources()
     mRenderer->deleteUniformBuffers();
     mRenderer->deleteGraphicsPipeline();
     mRenderer->deleteSwapChain();
+    mRenderer->deleteSyncObjects();
 }
 
 VkInstance VulkanWindow::createInstance() {
@@ -578,7 +584,7 @@ const char* VulkanWindow::pickLinuxSurfaceExtension() {
 /// </summary>
 /// <param name="inst">Optional QVulkanInstance parameter.</param>
 /// <returns></returns>
-bool CheckValidationLayerSupport(QVulkanInstance *inst = nullptr) {
+bool CheckValidationLayerSupport(QVulkanInstance* inst = nullptr) {
 
     if (inst != nullptr) {
 
@@ -628,11 +634,11 @@ bool CheckValidationLayerSupport(QVulkanInstance *inst = nullptr) {
 
 int main(int argc, char* argv[])
 {
-	
-	// Let's get additional Qt diagnosis data to the Linux Console Window.
-	// This affects only for a Linux build.
-	qputenv("QT_DEBUG_PLUGINS", QByteArray("1"));
-    
+
+    // Let's get additional Qt diagnosis data to the Linux Console Window.
+    // This affects only for a Linux build.
+    qputenv("QT_DEBUG_PLUGINS", QByteArray("1"));
+
     // QApplication is the child class of QGuiApplication which has base class QCoreApplication. 
     // We need QApplication because we want to use both QWidgets and QVulkanInstance.
     QApplication app(argc, argv);
@@ -649,6 +655,7 @@ int main(int argc, char* argv[])
         qWarning("Validation layers requested, but not available!");
     }
     else {
+        qInfo("Validation layers requested.");
         QList<QByteArray> temp;
         temp.reserve(ValidationLayers.size());
         for (int i = 0; i < ValidationLayers.size(); i++) {
@@ -682,6 +689,5 @@ int main(int argc, char* argv[])
     w.setupVulkanInstance(inst);
 
     // Finally start application.
-    return app.exec(); 
+    return app.exec();
 }
-

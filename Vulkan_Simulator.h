@@ -52,14 +52,14 @@ private:
 	LinuxDisplayType getLinuxDisplayType();
 	const char* pickLinuxSurfaceExtension();
 
-	
+
 	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
 	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR = nullptr;
 	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
 	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR = nullptr;
 	PFN_vkQueuePresentKHR vkQueuePresentKHR = nullptr;
 
-	
+
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR
 		vkGetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
 	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR
@@ -73,7 +73,7 @@ private:
 	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures = nullptr;
 	PFN_vkEnumerateDeviceExtensionProperties
 		vkEnumerateDeviceExtensionProperties = nullptr;
-	
+
 
 	bool mInitialized = true;
 	bool mStart = true;
@@ -90,11 +90,11 @@ private:
 	uint32_t mSwapchainBufferCount = 0;
 	QMatrix4x4 mClipCorrect = QMatrix4x4();
 	VkRenderPass mDefaultRenderPass = 0;
-	QVulkanInstance *mQInstance = VK_NULL_HANDLE;
+	QVulkanInstance* mQInstance = VK_NULL_HANDLE;
 	VulkanPointers mVulkanPointers;
 	std::unique_ptr<Renderer> mRenderer = nullptr;
 	std::unique_ptr<FileReader> mFileReader = nullptr;
-	QTimer *mTimer = nullptr;
+	QTimer* mTimer = nullptr;
 };
 
 #endif

@@ -33,7 +33,7 @@
         },
         {
           "name": "VULKAN_DIRS",
-          "value": "C:/VulkanSDK/1.2.198.1/Include",
+          "value": "C:/VulkanSDK/1.3.275.0/Include",
           "type": "PATH"
         }
       ]

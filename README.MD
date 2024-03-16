@@ -6,7 +6,7 @@ Multi platform application development, modern C++ and the new graphics API Vulk
 
 Chosen development tool Microsoft Visual Studio offers us a possibility to develop an application simultaneously for several different platforms using the same code base. This time chosen platforms are Windows and Linux, and I use CMake and Qt to enable multi platform development. Vulkan graphics API is used for 3D visualizing of glTF file contents.
 
-Currently the code has several bugs and deficiencies, but 3D rendering already works...
+Currently the code has several bugs and deficiencies, and the main problem is that modelviewprojection matrices don't go to the vertex shader. They get copied to the uniform buffer object, but uniform buffer doesn't get linked to the descriptor set, so vertex shader cannot use matrices.
 
 ## Requirements
 

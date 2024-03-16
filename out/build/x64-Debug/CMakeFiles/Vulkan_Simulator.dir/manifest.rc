@@ -1,0 +1,2 @@
+#pragma code_page(65001)
+1 /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ 24 /* RT_MANIFEST */ "C:/Users/acer/source/repos/mamannon/Vulkan_Simulator/out/build/x64-Debug/CMakeFiles/Vulkan_Simulator.dir/embed.manifest"

@@ -63,6 +63,7 @@ if(WIN32)
   # Specify to use C++ version 17 in sources of Vulkan_Simulator
   target_compile_features(Vulkan_Simulator PUBLIC cxx_std_17)
   set_target_properties(Vulkan_Simulator PROPERTIES CXX_EXTENSIONS OFF)
+ # set(CMAKE_CXX_STANDARD 11)
 
   # Add the Qt5 Widgets and other needed libraries for linking.
   target_link_libraries(Vulkan_Simulator Qt5::Core Qt5::Widgets)

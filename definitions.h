@@ -23,10 +23,10 @@
 
 
 #ifdef __linux__
-    #include <glm.hpp>
+#include <glm.hpp>
 #elif _WIN32
-    #include <glm/glm.hpp>
-    #define VK_USE_PLATFORM_WIN32_KHR
+#include <glm/glm.hpp>
+#define VK_USE_PLATFORM_WIN32_KHR
 #else
 
 #endif
@@ -40,7 +40,7 @@
 
 const std::vector<const char*> ValidationLayers = {
     "VK_LAYER_KHRONOS_validation"
-//    "VK_LAYER_LUNARG_standard_validation"
+    //    "VK_LAYER_LUNARG_standard_validation"
 };
 
 #ifdef NDEBUG
@@ -49,15 +49,18 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
+static const int MAX_FRAMES_IN_FLIGHT = 3;
+
 /// <summary>
 /// Vertex shader. Normally one should not compute model- view- and projection matrix
 /// multiplications in a shader, because it is inefficient due to repetition in every vertex.
+/// WE DON'T USE THIS SHADER, BECAUSE IT'S FORMAT IS GLSL, AND VULKAN ACCEPT SPIR-V ONLY.
+/// HOWEVER, THIS IS THE SOURCE CODE USED TO COMPILE SPIR-V.
 /// </summary>
 static const std::string VERTEX_GLSL =
 "#version 450\n"
-"#extension GL_KHR_vulkan_glsl : enable\n"
 
-"layout(binding = 0) uniform UniformBufferObject {\n"
+"layout(set = 0, binding = 0) uniform UniformBufferObject {\n"
 "mat4 model;\n"
 "mat4 view;\n"
 "mat4 proj;\n"
@@ -76,7 +79,6 @@ static const std::string VERTEX_GLSL =
 /// </summary>
 static const std::string FRAGMENT_GLSL =
 "#version 450\n"
-"#extension GL_KHR_vulkan_glsl : enable\n"
 
 "layout(location = 0) out vec4 outColor;\n"
 
@@ -98,7 +100,6 @@ class VulkanRenderer;
 class VulkanWindow;
 
 struct VulkanPointers {
- //   VulkanRenderer* pVulkanRenderer = nullptr;
     VulkanWindow* pVulkanWindow = nullptr;
     QVulkanDeviceFunctions* pDeviceFunctions = nullptr;
     QVulkanFunctions* pVulkanFunctions = nullptr;
