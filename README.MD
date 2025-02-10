@@ -6,13 +6,23 @@ Multi platform application development, modern C++ and the new graphics API Vulk
 
 Chosen development tool Microsoft Visual Studio offers us a possibility to develop an application simultaneously for several different platforms using the same code base. This time chosen platforms are Windows and Linux, and I use CMake and Qt to enable multi platform development. Vulkan graphics API is used for 3D visualizing of glTF file contents.
 
-Currently the code has several bugs and deficiencies, and the main problem is that modelviewprojection matrices don't go to the vertex shader. They get copied to the uniform buffer object, but uniform buffer doesn't get linked to the descriptor set, so vertex shader cannot use matrices.
+Currently the code renders correctly, but data reading from 3D file is not implemented yet.
 
 ## Requirements
 
-To fully run and develop this project, you need Microsoft Visual Studio 2019 or newer installed on a Windows computer. Then you need another computer with a Linux operating system and an ethernet connection between the two computers. Both computers need Vulkan SDK and Qt 5 installed among many other libraries I cannot remember now. And of course the graphics drivers of both computers must be Vulkan 1.0 capable.
+To fully run and develop this project, you need Microsoft Visual Studio 2022 or newer installed on a Windows computer. Then, if you like to develop for Linux, you need another computer with a Linux operating system and an ethernet connection between the two computers. Graphics drivers of both computers must be Vulkan 1.0 capable.
 
-CMake is the script language to orchestrate project build and you need to set correct absolute file paths of your both computers to get things working.
+Currently only Windows application is working and you need Vulkan SDK and Qt 6.8.1 library installed on your computer, among other libraries. The installation should go like:
+
+- Install Qt libaray from https://www.qt.io/download-qt-installer-oss . Select Qt version 6.8.1.
+
+- Install vcpkg library management tool using command line tool like Windows PowerShell. First download vcpkg into your computer: git clone https://github.com/microsoft/vcpkg.git. Second go to the vcpkg directory: cd vcpkg. Third install vcpkg: .\bootstrap-vcpkg.bat.
+
+- Then use vcpkg to install other needed libraries, nlohmann, stb and glm, to your computer: .\vcpkg install nlohmann-json, .\vcpkg install glm, .\vcpkg install stb
+
+- Download and install Vulkan SDK from https://vulkan.lunarg.com/sdk/home#windows.
+
+CMake is the script language to orchestrate project build and you need to set correct absolute file paths to get things working.
 
 ## License
 

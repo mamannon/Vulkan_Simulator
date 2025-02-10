@@ -1,6 +1,4 @@
-﻿// Vulkan Simulator.h : Include file for standard system include files,
-// or project specific include files.
-
+﻿
 #ifndef __Vulkan_Simulator_h__
 #define __Vulkan_Simulator_h__
 
@@ -23,17 +21,14 @@ public:
 
 	VulkanWindow();
 	virtual ~VulkanWindow();
-	VkPhysicalDevice physicalDevice() { return mPhysDevice; }
-	VkDevice device() { return mDevice; }
+	VkPhysicalDevice physicalDevice() { return mVulkanPointers.physicalDevice; }
+	VkDevice device() { return mVulkanPointers.device; }
 	QMatrix4x4 clipCorrectionMatrix();
 	QSize swapChainImageSize() { return QSize(this->width(), this->height()); }
-	int depthStencilFormat() { return mDepthStencilFormat; }
-	int colorFormat() { return mColorFormat; }
 	void setupVulkanInstance(QVulkanInstance& instance);
-	VkQueue graphicsQueue() { return mGraphicsQueue; }
-	VkQueue presentQueue() { return mPresentQueue; }
-	QVector<const char*> getRequiredExtensions();
 	VkInstance createInstance();
+	std::vector<const char*> getRequiredInstanceExtensions();
+	const char* getLinuxDisplayType();
 
 private:
 
@@ -49,52 +44,20 @@ private:
 	void release();
 	void releaseResources();
 	void releaseSwapChainResources();
-	LinuxDisplayType getLinuxDisplayType();
-	const char* pickLinuxSurfaceExtension();
-
-
-	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
-	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR = nullptr;
-	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
-	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR = nullptr;
-	PFN_vkQueuePresentKHR vkQueuePresentKHR = nullptr;
-
-
-	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR
-		vkGetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
-	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR
-		vkGetPhysicalDeviceSurfaceFormatsKHR = nullptr;
-	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR
-		vkGetPhysicalDeviceSurfacePresentModesKHR = nullptr;
-	PFN_vkGetPhysicalDeviceQueueFamilyProperties
-		vkGetPhysicalDeviceQueueFamilyProperties = nullptr;
-	PFN_vkGetPhysicalDeviceSurfaceSupportKHR
-		vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
-	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures = nullptr;
-	PFN_vkEnumerateDeviceExtensionProperties
-		vkEnumerateDeviceExtensionProperties = nullptr;
-
+	bool isDeviceSuitable(const VkPhysicalDevice& device,
+		const VkSurfaceKHR& surface, QueueFamilyIndices& qfi, SwapChainSupportDetails& scsd);
+	void setupDebugMessenger();
+	void releaseDebugMesseger();
 
 	bool mInitialized = true;
 	bool mStart = true;
-	VkSurfaceKHR mSurface = 0;
-	VkPhysicalDevice mPhysDevice = 0;
-	VkDevice mDevice = 0;
-	VkInstance mInstance = 0;
-	VkQueue mGraphicsQueue = 0, mPresentQueue = 0;
-	VkCommandPool mCommandPool = 0;
 	PFN_vkCreateInstance vkCreateInstance_ = nullptr;
-	VkFormat mColorFormat = VK_FORMAT_B8G8R8_UNORM;
-	VkFormat mDepthStencilFormat = VK_FORMAT_D24_UNORM_S8_UINT;
-	VkSwapchainKHR mSwapChain = 0;
-	uint32_t mSwapchainBufferCount = 0;
 	QMatrix4x4 mClipCorrect = QMatrix4x4();
-	VkRenderPass mDefaultRenderPass = 0;
-	QVulkanInstance* mQInstance = VK_NULL_HANDLE;
 	VulkanPointers mVulkanPointers;
 	std::unique_ptr<Renderer> mRenderer = nullptr;
 	std::unique_ptr<FileReader> mFileReader = nullptr;
 	QTimer* mTimer = nullptr;
+	VkDebugUtilsMessengerEXT mDebugMessenger = VK_NULL_HANDLE;
 };
 
 #endif

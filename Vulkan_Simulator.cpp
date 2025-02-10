@@ -1,6 +1,4 @@
-﻿// Vulkan Simulator.cpp : Defines the entry point for the application.
-//
-
+﻿
 #include "Vulkan_Simulator.h"
 
 Q_LOGGING_CATEGORY(lcVk, "qt.vulkan")
@@ -26,27 +24,21 @@ void VulkanWindow::release()
 {
     qDebug("release");
 
-    if (!mDevice) return;
+    if (!mVulkanPointers.device) return;
 
-    vkDeviceWaitIdle(mDevice);
+    vkDeviceWaitIdle(mVulkanPointers.device);
 
-    if (mCommandPool)
+    if (mVulkanPointers.device)
     {
-        vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
-        mCommandPool = VK_NULL_HANDLE;
-    }
-
-    if (mDevice)
-    {
-        vkDestroyDevice(mDevice, nullptr);
+        vkDestroyDevice(mVulkanPointers.device, nullptr);
 
         // Play nice and notify QVulkanInstance that the QVulkanDeviceFunctions
         // for mDevice needs to be invalidated.
      ///   vulkanInstance()->resetDeviceFunctions(mDevice);  // TODO: destroy everything before using this!
-        mDevice = VK_NULL_HANDLE;
+        mVulkanPointers.device = VK_NULL_HANDLE;
     }
 
-    mSurface = VK_NULL_HANDLE;
+    mVulkanPointers.surface = VK_NULL_HANDLE;
 }
 
 /// <summary>
@@ -75,19 +67,21 @@ QMatrix4x4 VulkanWindow::clipCorrectionMatrix()
     return mClipCorrect;
 }
 
+/// <summary>
+/// SetupVulkanInstance function collects together other Vulkan initialization functions. It needs a valid
+/// initalized Vulkan instance as a parameter.
+/// </summary>
+/// <param name="instance">Qt libaray wrapper for Vulkan instance.</param>
 void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
-    mQInstance = &instance;
-    mInstance = instance.vkInstance();
+    this->setVulkanInstance(&instance);
 
-    setVulkanInstance(&instance);
-
-    QByteArrayList extensions = { "VK_EXT_debug_utils" };  // This doesn't work. Function vkSetDebugUtilsObjectNameEXT remains a null pointer.
-    instance.setExtensions(extensions);
-
-    // Get window and Vulkan instance functions.
+    // Get window, surface and Vulkan instance function pointers.
     mVulkanPointers.pVulkanWindow = this;
-    mVulkanPointers.pVulkanFunctions = vulkanInstance()->functions();
-    mVulkanPointers.pInstance = vulkanInstance();
+    mVulkanPointers.pVulkanFunctions = this->vulkanInstance()->functions();
+    mVulkanPointers.pInstance = &instance;
+    mVulkanPointers.instance = instance.vkInstance();
+    mVulkanPointers.surface = this->vulkanInstance()->surfaceForWindow(
+        mVulkanPointers.pVulkanWindow);
 
     // Let user select a glTF file to be shown.
     QString filename = QFileDialog::getOpenFileName(
@@ -117,191 +111,354 @@ void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
 }
 
 /// <summary>
-/// This helper function initializes necessary components inherently coupled with VkInstace:
-/// device, physical device, queues and command pool.
+/// Init function initializes necessary components inherently coupled with VkInstace:
+/// device, physical device, queues and Renderer class instance.
 /// </summary>
 void VulkanWindow::init()
 {
-    qDebug("init");
+    qInfo("init");
 
-    QVulkanInstance* inst = vulkanInstance();
-    mSurface = QVulkanInstance::surfaceForWindow(this);
-    if (!mSurface) qFatal("Failed to get surface for window.");
+    QVulkanInstance* inst = this->vulkanInstance();
+    mVulkanPointers.surface = QVulkanInstance::surfaceForWindow(this);
+    if (!mVulkanPointers.surface) qFatal("Failed to get surface for window.");
+
+    // Setup function pointers regarding to the physical device.
+    initPhysDeviceFunctions();
+
+    if (enableValidationLayers) {
+
+        //If we want to use custom debug messenger.
+        setupDebugMessenger();
+    }
 
     // Enumerate Vulkan physical devices.
     uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(mInstance, &deviceCount, nullptr);
+    vkEnumeratePhysicalDevices(mVulkanPointers.instance, &deviceCount, nullptr);
     if (deviceCount == 0) qFatal("No physical Vulkan devices.");
-    QVector<VkPhysicalDevice> physDevices(deviceCount);
-    VkResult err = vkEnumeratePhysicalDevices(mInstance, &deviceCount, physDevices.data());
+    std::vector<VkPhysicalDevice> physDevices(deviceCount);
+    VkResult err = vkEnumeratePhysicalDevices(mVulkanPointers.instance, &deviceCount, physDevices.data());
     if (err != VK_SUCCESS && err != VK_INCOMPLETE)
         qFatal("Failed to enumerate Vulkan physical devices: %d", err);
 
     // Select suitable physical device.
     int integrated = -1;
     int discrete = -1;
+    QueueFamilyIndices integratedQFI{};
+    QueueFamilyIndices discreteQFI{};
+    SwapChainSupportDetails integratedSCSD{};
+    SwapChainSupportDetails discreteSCSD{};
     for (int i = 0; i < deviceCount; i++) {
-        VkPhysicalDeviceProperties physDeviceProps;
+        VkPhysicalDeviceProperties physDeviceProps{};
         vkGetPhysicalDeviceProperties(physDevices[i], &physDeviceProps);
 
+        // Do we have a discrete GPU?
         if (physDeviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && discrete == -1) {
-            discrete = i;
-            qDebug("Discrete device name: %s Driver version: %d.%d.%d",
-                physDeviceProps.deviceName,
-                VK_API_VERSION_MAJOR(physDeviceProps.driverVersion),
-                VK_API_VERSION_MINOR(physDeviceProps.driverVersion),
-                VK_API_VERSION_PATCH(physDeviceProps.driverVersion));
+            if (isDeviceSuitable(physDevices[i], mVulkanPointers.surface, discreteQFI, discreteSCSD)) {
+                discrete = i;
+                qDebug("Discrete device name: %s Driver version: %d.%d.%d",
+                    physDeviceProps.deviceName,
+                    VK_API_VERSION_MAJOR(physDeviceProps.driverVersion),
+                    VK_API_VERSION_MINOR(physDeviceProps.driverVersion),
+                    VK_API_VERSION_PATCH(physDeviceProps.driverVersion));
+            }
         }
 
+        // Do we have an integrated GPU?
         if (physDeviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU && integrated == -1) {
-            integrated = i;
-            qDebug("Integrated device name: %s Driver version: %d.%d.%d",
-                physDeviceProps.deviceName,
-                VK_API_VERSION_MAJOR(physDeviceProps.driverVersion),
-                VK_API_VERSION_MINOR(physDeviceProps.driverVersion),
-                VK_API_VERSION_PATCH(physDeviceProps.driverVersion));
+            if (isDeviceSuitable(physDevices[i], mVulkanPointers.surface, integratedQFI, integratedSCSD)) {
+                integrated = i;
+                qDebug("Integrated device name: %s Driver version: %d.%d.%d",
+                    physDeviceProps.deviceName,
+                    VK_API_VERSION_MAJOR(physDeviceProps.driverVersion),
+                    VK_API_VERSION_MINOR(physDeviceProps.driverVersion),
+                    VK_API_VERSION_PATCH(physDeviceProps.driverVersion));
+            }
         }
+
     }
-    mPhysDevice = physDevices[0];
-    if (integrated != -1) mPhysDevice = physDevices[integrated];
-    if (discrete != -1) mPhysDevice = physDevices[discrete];
-
-    // Setup function pointers regarding to the physical device.
-    initPhysDeviceFunctions();
-
-    // Graphics drivers executes commands asychronously along queues, which themselves are grouped
-    // into queue families. We need to select graphics queue and presentation queue.
-    uint32_t queueCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(mPhysDevice, &queueCount, nullptr);
-    QVector<VkQueueFamilyProperties> queueFamilyProps(queueCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(mPhysDevice, &queueCount,
-        queueFamilyProps.data());
-    int graphicsQueueFamilyIndex = -1;
-    int presentQueueFamilyIndex = -1;
-
-    // First look for a queue family that supports both.
-    for (int i = 0; i < queueFamilyProps.count(); ++i)
-    {
-        if (graphicsQueueFamilyIndex == -1 &&
-            (queueFamilyProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
-            inst->supportsPresent(mPhysDevice, i, this))
-            graphicsQueueFamilyIndex = i;
+    if (integrated != -1) {
+        mVulkanPointers.physicalDevice = physDevices[integrated];
+        mVulkanPointers.queueFamilyIndices = integratedQFI;
+        mVulkanPointers.swapChainSupportDetails = integratedSCSD;
     }
 
-    if (graphicsQueueFamilyIndex != -1) {
-        presentQueueFamilyIndex = graphicsQueueFamilyIndex;
+    if (discrete != -1) {
+        mVulkanPointers.physicalDevice = physDevices[discrete];
+        mVulkanPointers.queueFamilyIndices = discreteQFI;
+        mVulkanPointers.swapChainSupportDetails = discreteSCSD;
     }
-    else {
 
-        // Separate queues then.
-        qDebug("No queue with graphics+present; Trying separate queues.");
-        for (int i = 0; i < queueFamilyProps.count(); ++i) {
-            if (graphicsQueueFamilyIndex == -1 &&
-                (queueFamilyProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT))
-                graphicsQueueFamilyIndex = i;
-            if (presentQueueFamilyIndex == -1 &&
-                inst->supportsPresent(mPhysDevice, i, this))
-                presentQueueFamilyIndex = i;
-        }
+    if (mVulkanPointers.physicalDevice == 0) {
+        qFatal("Did not found any suitable physical device (graphics card)!");
     }
-    if (graphicsQueueFamilyIndex == -1)
-        qFatal("No graphics queue family found");
-    if (presentQueueFamilyIndex == -1)
-        qFatal("No present queue family found");
 
     // Create logical device.
-    VkDeviceQueueCreateInfo queueInfo[2];
-    const float prio[] = { 0 };
-    memset(queueInfo, 0, sizeof(queueInfo));
-    queueInfo[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueInfo[0].queueFamilyIndex = graphicsQueueFamilyIndex;
-    queueInfo[0].queueCount = 1;
-    queueInfo[0].pQueuePriorities = prio;
-
-    if (graphicsQueueFamilyIndex != presentQueueFamilyIndex) {
-        queueInfo[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueInfo[1].queueFamilyIndex = presentQueueFamilyIndex;
-        queueInfo[1].queueCount = 1;
-        queueInfo[1].pQueuePriorities = prio;
+    if (!mVulkanPointers.queueFamilyIndices.graphicsFamily.has_value() ||
+        !mVulkanPointers.queueFamilyIndices.presentFamily.has_value()) {
+        qFatal("Graphics queue family and/or presentation queue family missing!");
     }
 
-    QVector<const char*> deviceExtensions;
-    deviceExtensions.append("VK_KHR_swapchain");
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t> queueFamilies = { mVulkanPointers.queueFamilyIndices.graphicsFamily.value(),
+        mVulkanPointers.queueFamilyIndices.presentFamily.value() };
+    float prio = 1.0f;
+    for (uint32_t queueFamily : queueFamilies) {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &prio;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     VkDeviceCreateInfo devInfo{};
     devInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    devInfo.queueCreateInfoCount = graphicsQueueFamilyIndex == presentQueueFamilyIndex ? 1 : 2;
-    devInfo.pQueueCreateInfos = queueInfo;
-    devInfo.enabledLayerCount = ValidationLayers.size();
-    devInfo.ppEnabledLayerNames = ValidationLayers.data();
-    devInfo.enabledExtensionCount = deviceExtensions.count();
-    devInfo.ppEnabledExtensionNames = deviceExtensions.constData();
+    devInfo.queueCreateInfoCount = (uint32_t)
+        mVulkanPointers.queueFamilyIndices.graphicsFamily.value() ==
+        mVulkanPointers.queueFamilyIndices.presentFamily.value() ? 1 : 2;
+    devInfo.pQueueCreateInfos = queueCreateInfos.data();
+    if (enableValidationLayers) {
+        devInfo.enabledLayerCount = validationLayers.size();
+        devInfo.ppEnabledLayerNames = validationLayers.data();
+    }
+    else {
+        devInfo.enabledLayerCount = 0;
+    }
+    devInfo.enabledExtensionCount = deviceExtensions.size();
+    devInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-    err = vkCreateDevice(mPhysDevice, &devInfo, nullptr, &mDevice);
+    // We don't need optional features in this application, so we give device features struct where all 
+    // features are set to default IE. not using any features.
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    devInfo.pEnabledFeatures = &deviceFeatures;
+
+    err = vkCreateDevice(mVulkanPointers.physicalDevice, &devInfo, nullptr, &mVulkanPointers.device);
     if (err != VK_SUCCESS) qFatal("Failed to create logical device: %d", err);
+
+    vkGetDeviceQueue(mVulkanPointers.device, mVulkanPointers.queueFamilyIndices.graphicsFamily.value(),
+        0, &mVulkanPointers.graphicsQueue);
+    vkGetDeviceQueue(mVulkanPointers.device, mVulkanPointers.queueFamilyIndices.presentFamily.value(),
+        0, &mVulkanPointers.presentQueue);
+
+    // Get Qt Vulkan Logical Device pointers.
+    mVulkanPointers.pDeviceFunctions = this->vulkanInstance()->
+        deviceFunctions(mVulkanPointers.device);
 
     // Setup function pointers regarding to the logical device.
     initDeviceFunctions();
 
-    // Create command pool.
-    vkGetDeviceQueue(mDevice, graphicsQueueFamilyIndex, 0, &mGraphicsQueue);
-    if (graphicsQueueFamilyIndex == presentQueueFamilyIndex) {
-        mPresentQueue = mGraphicsQueue;
+    // Create Renderer class instance.
+    if (!mVulkanPointers.swapChainSupportDetails.capabilities.has_value() ||
+        mVulkanPointers.swapChainSupportDetails.formats.size() == 0 ||
+        mVulkanPointers.swapChainSupportDetails.presentModes.size() == 0) {
+        qFatal("SwapChainSupportDetails data missing!");
     }
-    else {
-        vkGetDeviceQueue(mDevice, presentQueueFamilyIndex, 0, &mPresentQueue);
-    }
+    mRenderer = std::make_unique<Renderer>(Renderer(mVulkanPointers));
 
+    // Init the necessary Vulkan stuff.
+    mRenderer->setViewMatrix();
+    mRenderer->setModelMatrix();
+    mRenderer->createSyncObjects();
+    mRenderer->createCommandPool();
+    mRenderer->createSwapChain(mVulkanPointers.swapChainSupportDetails, nullptr, nullptr, mRenderer->getSwapChain());
+    mRenderer->createGraphicsPipeline();
+    mRenderer->createUniformBuffers();
 }
 
+/// <summary>
+/// This helper function loads glTF file and creates vertex buffers. Before calling 
+/// this function call init() first! 
+/// </summary>
+void VulkanWindow::initResources()
+{
+    qInfo("initResources");
 
+    // Load 3D model into memory.
+    if (mFileReader == nullptr) {
+        mFileReader = std::make_unique<FileReader>();
+    }
+    if (!mFileReader->loadFile(mVulkanPointers.path))
+        qFatal("Couldn't load a file!");
 
+    // Create vertex data from opened file.
+    mRenderer->createVertexBuffer(*mFileReader->getModel());
+}
+
+/// <summary>
+/// SetupDegugMesseger function creates a custom debug messenger, which sends Vulkan degug messages to 
+/// qInfo output starting with a text "Vulkan validation layer".
+/// </summary>
+void VulkanWindow::setupDebugMessenger() {
+    if (!enableValidationLayers) return;
+
+    if (mVulkanPointers.vkCreateDebugUtilsMessengerEXT(
+        mVulkanPointers.instance, &debugCreateInfo, nullptr, &mDebugMessenger) != VK_SUCCESS) {
+        qWarning("Failed to set up debug messenger!");
+    }
+}
+
+void VulkanWindow::releaseDebugMesseger() {
+    mVulkanPointers.vkDestroyDebugUtilsMessengerEXT(mVulkanPointers.instance, mDebugMessenger, nullptr);
+}
+
+/// <summary>
+/// IsDeviceSuitable function checks if the given device is suitable for us. 
+/// All Vulkan graphics cards are not suitable for us. 
+/// </summary>
+/// <param name="device">VkPhysicalDevice handle.</param>
+/// <param name="surface">Window we render into.</param>
+/// <returns></returns>
+bool VulkanWindow::isDeviceSuitable(const VkPhysicalDevice& device,
+    const VkSurfaceKHR& surface, QueueFamilyIndices& qfi, SwapChainSupportDetails& scsd)
+{
+
+    // Need to find queue families supporting drawing commands and the ones supporting presentation.
+    // Hopefully they are the same, but it is not necessary.
+    QueueFamilyIndices indices;
+    uint32_t queueFamilyCount = 0;
+    mVulkanPointers.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    mVulkanPointers.vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            indices.graphicsFamily = i;
+        }
+        VkBool32 presentSupport = false;
+        mVulkanPointers.vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if (presentSupport) {
+            indices.presentFamily = i;
+        }
+        if (indices.graphicsFamily.has_value() && indices.presentFamily.has_value()) {
+            break;
+        }
+        i++;
+    }
+
+    // Check if the device supports all the extensions we need.
+    bool extensionsSupported = false;
+    uint32_t extensionCount;
+    mVulkanPointers.vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    mVulkanPointers.vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+    std::set<std::string> requiredExtensions;
+    for (const char* next : deviceExtensions) {
+        if (next == "__linux__") {
+            requiredExtensions.insert(getLinuxDisplayType());
+        }
+        else {
+            requiredExtensions.insert(next);
+        }
+    }
+    for (const auto& extension : availableExtensions) {
+        requiredExtensions.erase(extension.extensionName);
+    }
+    extensionsSupported = requiredExtensions.empty();
+
+    // Check if the device supports the swap chain we need: one supported image format 
+    // and one supported presentation mode given the window surface we have.
+    bool swapChainAdequate = false;
+    SwapChainSupportDetails details{};
+    if (extensionsSupported) {
+        VkSurfaceCapabilitiesKHR temp;
+        mVulkanPointers.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &temp);
+        details.capabilities = temp;
+        uint32_t formatCount;
+        mVulkanPointers.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+        if (formatCount != 0) {
+            details.formats.resize(formatCount);
+            mVulkanPointers.vkGetPhysicalDeviceSurfaceFormatsKHR(
+                device, surface, &formatCount, details.formats.data());
+        }
+        uint32_t presentModeCount;
+        mVulkanPointers.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+        if (presentModeCount != 0) {
+            details.presentModes.resize(presentModeCount);
+            mVulkanPointers.vkGetPhysicalDeviceSurfacePresentModesKHR(
+                device, surface, &presentModeCount, details.presentModes.data());
+        }
+        swapChainAdequate = !details.formats.empty() && !details.presentModes.empty();
+    }
+
+    // Finally return are all the conditions suitable.
+    bool temp = indices.graphicsFamily.has_value() && indices.presentFamily.has_value() &&
+        extensionsSupported && swapChainAdequate;
+    if (temp) {
+
+        // Save queue family indices and swapchainsupportdetails for further use.
+        qfi = indices;
+        scsd = details;
+    }
+    return temp;
+}
+
+/// <summary>
+/// InitDeviceFunctions function initializes Vulkan Logical Device function pointers.
+/// </summary>
 void VulkanWindow::initDeviceFunctions() {
-    vkCreateSwapchainKHR = reinterpret_cast<PFN_vkCreateSwapchainKHR>(
-        vkGetDeviceProcAddr(mDevice, "vkCreateSwapchainKHR"));
+    qInfo("initDeviceFunctions");
 
-    vkDestroySwapchainKHR = reinterpret_cast<PFN_vkDestroySwapchainKHR>(
-        vkGetDeviceProcAddr(mDevice, "vkDestroySwapchainKHR"));
+    mVulkanPointers.vkCreateSwapchainKHR = reinterpret_cast<PFN_vkCreateSwapchainKHR>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkCreateSwapchainKHR"));
 
-    vkGetSwapchainImagesKHR = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(
-        vkGetDeviceProcAddr(mDevice, "vkGetSwapchainImagesKHR"));
+    mVulkanPointers.vkDestroySwapchainKHR = reinterpret_cast<PFN_vkDestroySwapchainKHR>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkDestroySwapchainKHR"));
 
-    vkAcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(
-        vkGetDeviceProcAddr(mDevice, "vkAcquireNextImageKHR"));
+    mVulkanPointers.vkGetSwapchainImagesKHR = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkGetSwapchainImagesKHR"));
 
-    vkQueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(
-        vkGetDeviceProcAddr(mDevice, "vkQueuePresentKHR"));
+    mVulkanPointers.vkAcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkAcquireNextImageKHR"));
+
+    mVulkanPointers.vkQueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkQueuePresentKHR"));
+
+    mVulkanPointers.vkDeviceWaitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(
+        vkGetDeviceProcAddr(mVulkanPointers.device, "vkDeviceWaitIdle"));
 }
 
+/// <summary>
+/// InitPhysDeviceFunctions function initializes Vulkan Physical Device (graphics card) function pointers.
+/// </summary>
 void VulkanWindow::initPhysDeviceFunctions() {
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR =
+    qInfo("initPhysDeviceFunctions");
+
+    mVulkanPointers.vkGetPhysicalDeviceSurfaceCapabilitiesKHR =
         reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(
-            vkGetInstanceProcAddr(mInstance,
+            vkGetInstanceProcAddr(mVulkanPointers.instance,
                 "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"));
 
-    vkGetPhysicalDeviceSurfaceFormatsKHR =
+    mVulkanPointers.vkGetPhysicalDeviceSurfaceFormatsKHR =
         reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>(
-            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceSurfaceFormatsKHR"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkGetPhysicalDeviceSurfaceFormatsKHR"));
 
-    vkGetPhysicalDeviceSurfacePresentModesKHR =
+    mVulkanPointers.vkGetPhysicalDeviceSurfacePresentModesKHR =
         reinterpret_cast<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(
-            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceSurfacePresentModesKHR"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkGetPhysicalDeviceSurfacePresentModesKHR"));
 
-    vkGetPhysicalDeviceQueueFamilyProperties =
+    mVulkanPointers.vkGetPhysicalDeviceQueueFamilyProperties =
         reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(
-            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceQueueFamilyProperties"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkGetPhysicalDeviceQueueFamilyProperties"));
 
-    vkGetPhysicalDeviceSurfaceSupportKHR =
+    mVulkanPointers.vkGetPhysicalDeviceSurfaceSupportKHR =
         reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(
-            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceSurfaceSupportKHR"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkGetPhysicalDeviceSurfaceSupportKHR"));
 
-    vkGetPhysicalDeviceFeatures =
+    mVulkanPointers.vkGetPhysicalDeviceFeatures =
         reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures>(
-            vkGetInstanceProcAddr(mInstance, "vkGetPhysicalDeviceFeatures"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkGetPhysicalDeviceFeatures"));
 
-    vkEnumerateDeviceExtensionProperties =
+    mVulkanPointers.vkEnumerateDeviceExtensionProperties =
         reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
-            vkGetInstanceProcAddr(mInstance, "vkEnumerateDeviceExtensionProperties"));
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkEnumerateDeviceExtensionProperties"));
+
+    mVulkanPointers.vkCreateDebugUtilsMessengerEXT =
+        reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkCreateDebugUtilsMessengerEXT"));
+
+    mVulkanPointers.vkDestroyDebugUtilsMessengerEXT =
+        reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(mVulkanPointers.instance, "vkDestroyDebugUtilsMessengerEXT"));
 }
 
 void VulkanWindow::refresh() {
@@ -367,42 +524,8 @@ bool VulkanWindow::event(QEvent* e) {
 }
 
 /// <summary>
-/// This helper function loads glTF file and creates Renderer class instance, which sets the most
-/// of Vulkan stuff. Before calling this function call init() first! Also pVulkanWindow and 
-/// pInstance as well as glTF file path need to be set before. 
-/// </summary>
-void VulkanWindow::initResources()
-{
-    qDebug("initResources");
-
-    // Get device and Vulkan device functions.
-    mVulkanPointers.device = mVulkanPointers.pVulkanWindow->device();
-    mVulkanPointers.physicalDevice = mVulkanPointers.pVulkanWindow->physicalDevice();
-    mVulkanPointers.pDeviceFunctions = mVulkanPointers.pVulkanWindow->vulkanInstance()->
-        deviceFunctions(mVulkanPointers.pVulkanWindow->device());
-    mVulkanPointers.surface = mVulkanPointers.pInstance->surfaceForWindow(
-        mVulkanPointers.pVulkanWindow);
-
-    // Load 3D model into memory.
-    if (mFileReader == nullptr) {
-        mFileReader = std::make_unique<FileReader>();
-    }
-    if (!mFileReader->loadFile(mVulkanPointers.path))
-        qFatal("Couldn't load a file!");
-
-    // Create renderer and init all the permanent parts of the renderer.
-    mRenderer = std::make_unique<Renderer>(Renderer(mVulkanPointers));
-    mRenderer->createVertexBuffer(*mFileReader->getModel());
-    mRenderer->setViewMatrix();
-    mRenderer->setModelMatrix();
-    mRenderer->createUniformBuffers();
-    mRenderer->createGraphicsPipeline();
-    mRenderer->createSyncObjects();
-}
-
-/// <summary>
-/// This helper function creates the parts of Vulkan which may be destroyed and recreated during
-/// the application lifetime: swapchain, imageviews and renderpass.
+/// InitSwapChainResources function creates the parts of Vulkan which may be destroyed and recreated during
+/// the application lifetime.
 /// </summary>
 void VulkanWindow::initSwapChainResources()
 {
@@ -432,11 +555,15 @@ void VulkanWindow::initSwapChainResources()
         0, 0, -1, 0);
 
     proj2 = proj2 * clipCorrectionMatrix();
-
+    /*
     mRenderer->setProjectionMatrix(proj2.data());
 
     // Then create swap chain.
-    mRenderer->createSwapChain(nullptr, nullptr, mRenderer->getSwapChain());
+    if (mRenderer->getSwapChain() != VK_NULL_HANDLE) {
+        mRenderer->deleteSwapChain();
+    }
+    mRenderer->createSwapChain(mVulkanPointers.swapChainSupportDetails, nullptr, nullptr, mRenderer->getSwapChain());
+    */
 }
 
 void VulkanWindow::releaseSwapChainResources()
@@ -445,7 +572,7 @@ void VulkanWindow::releaseSwapChainResources()
 
     // It is important to finish the pending frame right here since this is the
     // last opportunity to act with all resources intact.
-    vkDeviceWaitIdle(mDevice);
+    vkDeviceWaitIdle(mVulkanPointers.device);
 
     mRenderer->deleteSwapChain();
 }
@@ -459,19 +586,28 @@ void VulkanWindow::releaseResources()
     mVulkanPointers.pDeviceFunctions->vkDeviceWaitIdle(mVulkanPointers.device);
 
     mRenderer->deleteVertexBuffer();
+    mRenderer->deleteCommandPool();
     mRenderer->deleteUniformBuffers();
-    mRenderer->deleteGraphicsPipeline();
-    mRenderer->deleteSwapChain();
     mRenderer->deleteSyncObjects();
+    mRenderer->deleteGraphicsPipeline();
+
+    if (enableValidationLayers) {
+        releaseDebugMesseger();
+    }
 }
 
+/// <summary>
+/// This function creates a Vulkan instance. Although Qt offers us Vulkan instance, it doesn't suit for us.
+/// </summary>
+/// <returns>VkInstance instance.</returns>
 VkInstance VulkanWindow::createInstance() {
+    qInfo("createInstance");
 
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Vulkan Simulator";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = nullptr;//"No Engine";
+    appInfo.pEngineName = "No Engine";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
@@ -479,102 +615,71 @@ VkInstance VulkanWindow::createInstance() {
     instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instInfo.pApplicationInfo = &appInfo;
 
-    QVector<const char*> reqExtensions = getRequiredExtensions();
-    instInfo.enabledExtensionCount = reqExtensions.size();
-    instInfo.ppEnabledExtensionNames = reqExtensions.data();
+    std::vector<const char*> reqExtensions = this->getRequiredInstanceExtensions();
     if (enableValidationLayers)
     {
-        instInfo.enabledLayerCount = ValidationLayers.size();
-        instInfo.ppEnabledLayerNames = ValidationLayers.data();
+
+        instInfo.enabledLayerCount = validationLayers.size();
+        instInfo.ppEnabledLayerNames = validationLayers.data();
+
+        // When using validation layers, we need VK_EXT_debug_utils extension for debugging,
+        // if we want to use custom debug messenger.        
+        reqExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        instInfo.enabledExtensionCount = reqExtensions.size();
+        instInfo.ppEnabledExtensionNames = reqExtensions.data();
+        instInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
     }
     else {
         instInfo.enabledLayerCount = 0;
+        instInfo.enabledExtensionCount = reqExtensions.size();
+        instInfo.ppEnabledExtensionNames = reqExtensions.data();
     }
 
     VkInstance instance;
-    if (vkCreateInstance(&instInfo, nullptr, &instance) == VK_SUCCESS)
+    if (vkCreateInstance(&instInfo, nullptr, &instance) == VK_SUCCESS) {
         return instance;
+    }
 
     qFatal("Failed to create Vulkan instance!");
     return VK_NULL_HANDLE;
 }
 
-QVector<const char*> VulkanWindow::getRequiredExtensions() {
-    QVector<const char*> extensions;
-    extensions.append(VK_KHR_SURFACE_EXTENSION_NAME);// "VK_KHR_surface"
-
-    // Vulkan surface types:
-    //VK_KHR_win32_surface
-    //VK_KHR_wayland_surface
-    //VK_KHR_xcb_surface
-    //VK_KHR_xlib_surface
-    //VK_KHR_android_surface
-    //VK_MVK_macos_surface
-    //VK_MVK_ios_surface
-
-#ifdef _WIN32
-    extensions.append("VK_KHR_win32_surface");
-#elif __APPLE__
-#include "TargetConditionals.h"
-#if TARGET_IPHONE_SIMULATOR
-
-     // iOS Simulator
-    mtl_line();
-#elif TARGET_OS_IPHONE
-
-    // iOS device
-    extensions.append("VK_MVK_ios_surface");
-#elif TARGET_OS_MAC
-
-    // Other kinds of Mac OS
-    extensions.append("VK_MVK_macos_surface");
-#else
-    qWarning("Unknown Apple platform");
-#endif
-#else
-    extensions.append(pickLinuxSurfaceExtension());
-#endif
-
-    if (enableValidationLayers)
-        extensions.append(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-
+/// <summary>
+/// This function collects necessary instance extensions. All of these extensions may not be able to 
+/// define in compile time, so we define them dynamically.
+/// </summary>
+/// <returns>Vector containing instance extension names.</returns>
+std::vector<const char*> VulkanWindow::getRequiredInstanceExtensions() {
+    std::vector<const char*> extensions;
+    for (const char* extension : instanceExtensions) {
+        if (extension == "__linux__") {
+            extensions.push_back(this->getLinuxDisplayType());
+        }
+        else {
+            extensions.push_back(extension);
+        }
+    }
     return extensions;
 }
 
-LinuxDisplayType VulkanWindow::getLinuxDisplayType() {
-    // Inspired from:
-    // stackoverflow.com/questions/45536141/how-i-can-find-out-if-a-linux-system-uses-wayland-or-x11
-
+/// <summary>
+/// When running this project in Linux, we need to know what kind of display type we are using. This information
+/// cannot be retrieved in compile time, so we need to check it in runtime.
+/// </summary>
+/// <returns>Vulkan surface extension name for linux.</returns>
+const char* VulkanWindow::getLinuxDisplayType() {
     auto env = QProcessEnvironment::systemEnvironment();
 
     QString value = env.value(QLatin1String("WAYLAND_DISPLAY"));
     if (!value.isEmpty())
-        return LinuxDisplayType::Wayland;
-
+        return "VK_KHR_wayland_surface";
     value = env.value(QLatin1String("DISPLAY"));
     if (!value.isEmpty())
-        return LinuxDisplayType::X11;
-
-    qWarning("Unknown Linux display type");
-    return LinuxDisplayType::None;
-}
-
-const char* VulkanWindow::pickLinuxSurfaceExtension() {
-
-#ifdef __ANDROID__
-    return "VK_KHR_android_surface";
-#endif
-
-    const auto display = getLinuxDisplayType();
-
-    if (display == LinuxDisplayType::Wayland)
-        return "VK_KHR_wayland_surface";
-
-    if (display == LinuxDisplayType::X11)
         return "VK_KHR_xcb_surface";
 
-    qWarning("No Linux surface extension");
-    return nullptr;
+    // In case we didn't identify anything, just return extension we need anyways.
+    qWarning("Unknown Linux display type");
+    return VK_KHR_SURFACE_EXTENSION_NAME;
 }
 
 /// <summary>
@@ -592,7 +697,7 @@ bool CheckValidationLayerSupport(QVulkanInstance* inst = nullptr) {
         QVulkanInfoVector<QVulkanLayer> layers = inst->supportedLayers();
 
         // Check if there are the layers we want among availabale layers.
-        for (const char* layerName : ValidationLayers) {
+        for (const char* layerName : validationLayers) {
             bool layerFound = false;
             for (const auto& layer : layers) {
                 if (strcmp(layerName, layer.name) == 0) {
@@ -615,7 +720,7 @@ bool CheckValidationLayerSupport(QVulkanInstance* inst = nullptr) {
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
         // Check if there are the layers we want among available layers.
-        for (const char* layerName : ValidationLayers) {
+        for (const char* layerName : validationLayers) {
             bool layerFound = false;
             for (const auto& layerProperties : availableLayers) {
                 if (strcmp(layerName, layerProperties.layerName) == 0) {
@@ -657,17 +762,19 @@ int main(int argc, char* argv[])
     else {
         qInfo("Validation layers requested.");
         QList<QByteArray> temp;
-        temp.reserve(ValidationLayers.size());
-        for (int i = 0; i < ValidationLayers.size(); i++) {
-            temp.append(ValidationLayers[i]);
+        temp.reserve(validationLayers.size());
+        for (int i = 0; i < validationLayers.size(); i++) {
+            temp.append(validationLayers[i]);
         }
         inst.setLayers(temp);
     }
 
-    // Install needed Vulkan extensions.
-    auto extra = w.getRequiredExtensions();
+    // Install needed Vulkan instance extensions.
     QByteArrayList list;
-    for (const auto& next : extra) list.append(next);
+    std::vector<const char*> temp = w.getRequiredInstanceExtensions();
+    for (auto extension : temp) {
+        list.append(extension);
+    }
     inst.setExtensions(list);
 
     // Assing our own self created Vulkan instance for QVulkanInstance so that it doesn't

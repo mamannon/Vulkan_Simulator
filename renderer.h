@@ -1,4 +1,5 @@
-﻿#ifndef __renderer_h__
+﻿
+#ifndef __renderer_h__
 #define __renderer_h__
 
 #include "definitions.h"
@@ -14,13 +15,14 @@ struct PipelineBuilder {
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 	VkPipelineRasterizationStateCreateInfo rasterizer{};
 	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
 	VkPipelineMultisampleStateCreateInfo multisampling{};
-	VkPipelineLayoutCreateInfo ppipelineLayout{};
+	VkPipelineViewportStateCreateInfo viewportState{};
 	VkPipelineDepthStencilStateCreateInfo depthStencil{};
 	VkPipelineDynamicStateCreateInfo dynamic{};
 
 	VkDescriptorSetLayout dsLayout = VK_NULL_HANDLE;
-	VkVertexInputAttributeDescription vertexAttrDesc{};
+	VkVertexInputAttributeDescription vertexAttrDesc[2];
 	VkVertexInputBindingDescription vertexBindingDesc{};
 	std::vector<VkDynamicState> dynamicStates;
 
@@ -49,16 +51,18 @@ public:
 	void deleteUniformBuffers();
 	void createGraphicsPipeline();
 	void deleteGraphicsPipeline();
-	void createSwapChain(int* colorFormat = nullptr,
-		int* depthFormat = nullptr,
-		VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE);
+	void createSwapChain(const SwapChainSupportDetails& details, int* colorFormat = nullptr,
+		int* depthFormat = nullptr, VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE);
 	void deleteSwapChain();
-	VkSwapchainKHR getSwapChain() { return mSwapChain; };
+	void createCommandPool();
+	void deleteCommandPool();
 	void createSyncObjects();
 	void deleteSyncObjects();
+	VkSwapchainKHR getSwapChain() { return mSwapChainRes.swapChain; };
 
 private:
 
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	void traverse(int& nodeIndex, tinygltf::Model& model,
 		std::vector<glm::vec3>& vertices,
 		glm::mat4x4 transformation = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
@@ -68,19 +72,13 @@ private:
 	void setMinMax(glm::vec4& vec);
 	VkShaderModule createShaderModule(std::string file);
 	void updateUniformBuffer();
-	bool createTransientImage(VkFormat format,
-		VkImageUsageFlags usage,
-		VkImageAspectFlags aspectMask,
-		VkImage* images,
-		VkDeviceMemory* mem,
-		VkImageView* views,
-		int count);
-	uint32_t chooseTransientImageMemType(VkImage img, uint32_t startIndex);
+	VkFormat findSupportedDepthFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
 	VulkanPointers mVulkanPointers;
 	VkDeviceMemory mVertexBufferMemory = nullptr;
 	VkBuffer mVertexBuffer = nullptr;
-	int mVertexBufferSize = 0;
+	VkDeviceSize mVertexBufferSize = 0;
 	glm::vec3 mMin = { -1, -1, -1 };
 	glm::vec3 mMax = { 1, 1, 1 };
 	std::vector<VkBuffer> mUniformBuffers;
@@ -89,28 +87,15 @@ private:
 	const std::chrono::system_clock::time_point mStartTime = std::chrono::system_clock::now();
 	PipelineBuilder mPipelineBuilder;
 	VkPipeline mPipeline = VK_NULL_HANDLE;
-	VkSwapchainKHR mSwapChain = VK_NULL_HANDLE;
+	VkCommandPool mCommandPool = VK_NULL_HANDLE;
+	std::vector<VkCommandBuffer> mCommandBuffers;
 	QSize mSwapChainImageSize = QSize(0, 0);
 	VkDescriptorPool mDescriptorPool = VK_NULL_HANDLE;
-	uint32_t mActualSwapChainBufferCount = 0;
 	uint32_t mCurrentFrame = 0;
 	std::vector<VkDescriptorSet> mDescriptorSets;
-	VkShaderModule mVertShaderModule = VK_NULL_HANDLE;
-	VkShaderModule mFragShaderModule = VK_NULL_HANDLE;
-	VkSemaphore mPresentCompleteSemaphore = VK_NULL_HANDLE;
-	VkSemaphore mRenderingCompleteSemaphore = VK_NULL_HANDLE;
-	VkFence mRenderFence = VK_NULL_HANDLE;
-
-	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
-	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR = nullptr;
-	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
-	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR = nullptr;
-	PFN_vkQueuePresentKHR vkQueuePresentKHR = nullptr;
-	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
-	PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR = nullptr;
-	PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
-
-	//	PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT = nullptr;
+	std::vector<VkSemaphore> mImageAvailableSemaphores;
+	std::vector<VkSemaphore> mRenderingCompleteSemaphores;
+	std::vector<VkFence> mRenderFences;
 
 	struct UniformBufferObject {
 		glm::mat4 projectionMatrix = glm::mat4(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -119,15 +104,18 @@ private:
 	} mUboMVPMatrices;
 
 	struct SwapChainRes {
-		VkCommandBuffer cmdBuffer = VK_NULL_HANDLE;
 		VkImage depthImage = VK_NULL_HANDLE;
 		VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
-		VkImage images[MAX_FRAMES_IN_FLIGHT] = {};
+		uint32_t swapChainImageCount = 0;
+		std::vector<VkImage> swapChainImages = {};
+		std::vector<VkImageView> swapChainImageViews = {};
+		VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
+		VkFormat swapChainDepthFormat = VK_FORMAT_UNDEFINED;
+		VkExtent2D swapChainImageSize = {};
 		VkImageView depthImageView = VK_NULL_HANDLE;
-		VkImageView imageViews[MAX_FRAMES_IN_FLIGHT] = {};
 		VkRenderPass renderPass = VK_NULL_HANDLE;
-		VkFramebuffer frameBuffers[MAX_FRAMES_IN_FLIGHT] = {};
-		VkCommandPool commandPool = VK_NULL_HANDLE;
+		std::vector<VkFramebuffer> swapChainFrameBuffers = {};
+		VkSwapchainKHR swapChain = VK_NULL_HANDLE;
 	} mSwapChainRes;
 
 };

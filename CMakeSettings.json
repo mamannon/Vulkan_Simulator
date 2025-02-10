@@ -12,11 +12,6 @@
       "ctestCommandArgs": "",
       "variables": [
         {
-          "name": "Qt5_DIR",
-          "value": "C:/Qt/5.12.12/msvc2017_64/lib/cmake/Qt5",
-          "type": "PATH"
-        },
-        {
           "name": "NLOHMANN_JSON_INCLUDE_DIRS",
           "value": "C:/vcpkg/packages/nlohmann-json_x64-windows/include",
           "type": "PATH"
@@ -29,11 +24,6 @@
         {
           "name": "GLM_INCLUDE_DIRS",
           "value": "C:/vcpkg/packages/glm_x64-windows/include",
-          "type": "PATH"
-        },
-        {
-          "name": "VULKAN_DIRS",
-          "value": "C:/VulkanSDK/1.3.275.0/Include",
           "type": "PATH"
         }
       ]
