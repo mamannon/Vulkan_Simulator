@@ -63,13 +63,6 @@ public:
 private:
 
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-	void traverse(int& nodeIndex, tinygltf::Model& model,
-		std::vector<glm::vec3>& vertices,
-		glm::mat4x4 transformation = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
-	void getPositions(std::vector<glm::vec3>& vertices,
-		tinygltf::Model& model, int& posAcc, int indAcc = -1,
-		glm::mat4x4 transformation = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
-	void setMinMax(glm::vec4& vec);
 	VkShaderModule createShaderModule(std::string file);
 	void updateUniformBuffer();
 	VkFormat findSupportedDepthFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
@@ -79,8 +72,6 @@ private:
 	VkDeviceMemory mVertexBufferMemory = nullptr;
 	VkBuffer mVertexBuffer = nullptr;
 	VkDeviceSize mVertexBufferSize = 0;
-	glm::vec3 mMin = { -1, -1, -1 };
-	glm::vec3 mMax = { 1, 1, 1 };
 	std::vector<VkBuffer> mUniformBuffers;
 	std::vector<VkDeviceMemory> mUniformBuffersMemory;
 	std::vector<void*> mUniformBuffersMapped;
@@ -98,9 +89,7 @@ private:
 	std::vector<VkFence> mRenderFences;
 
 	struct UniformBufferObject {
-		glm::mat4 projectionMatrix = glm::mat4(0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 1.0);
-		glm::mat4 modelMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-		glm::mat4 viewMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+		glm::mat4 modelViewProjectionMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 	} mUboMVPMatrices;
 
 	struct SwapChainRes {

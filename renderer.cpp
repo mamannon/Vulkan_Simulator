@@ -76,11 +76,13 @@ void Renderer::setProjectionMatrix(float* proj) {
            proj[8], proj[9], proj[10], proj[11],
            proj[12], proj[13], proj[14], proj[15]);
        */
+    /*
     mUboMVPMatrices.projectionMatrix = glm::mat4x4(
         proj[0], proj[4], proj[8], proj[12],
         proj[1], proj[5], proj[9], proj[13],
         proj[2], proj[6], proj[10], proj[14],
         proj[3], proj[7], proj[11], proj[15]);
+        */
 }
 
 /// <summary>
@@ -108,6 +110,7 @@ void Renderer::setViewMatrix(float* view) {
         0, 0, 0, 1);
     }
     */
+    /*
     if (view != nullptr) {
 
         // If we are given a matrix.
@@ -126,7 +129,7 @@ void Renderer::setViewMatrix(float* view) {
             0, 0, 1, 0,
             0, 0.5, 2, 1);
     }
-
+    */
 }
 
 /// <summary>
@@ -169,7 +172,7 @@ void Renderer::setModelMatrix(float* model) {
         mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
     }
     */
-
+    /*
     if (model != nullptr) {
         // If we are given a matrix.
         mUboMVPMatrices.modelMatrix = glm::mat4x4(
@@ -203,7 +206,7 @@ void Renderer::setModelMatrix(float* model) {
             rotationCenter.x, rotationCenter.y, rotationCenter.z, 1);
         mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
     }
-
+    */
 }
 
 /// <summary>
@@ -236,19 +239,28 @@ uint32_t Renderer::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags pro
 /// <param name="model">The content of single gltf file read by tinygltf.</param>
 void Renderer::createVertexBuffer(tinygltf::Model& model) {
 
-    // THIS VERTEX DATA IS FOR TESTING PURPOSES. IT REPRESENT A TRIANGLE.
-    const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}
-    };
+    std::vector<Vertex> vertices;
+
+    // First we need to extract 3D vertex data from glTF format. glTF data may consist several
+    // scenes, but we consider the defaultscene only. Let's enum all nodes in defaultScene:
+    for (int i = 0; i < model.scenes[model.defaultScene].nodes.size(); i++) {
+
+        // We investigate every node in defaultScene and their sub-nodes recursively.
+        int nodeIndex = model.scenes[model.defaultScene].nodes[i];
+        if (std::shared_ptr ptr = mVulkanPointers.fileReader.lock()) {
+            ptr->traverse(nodeIndex, vertices, &model);
+        }
+        else {
+            qFatal("FileReader object is empty.");
+        }
+    }
 
     mVertexBufferSize = sizeof(vertices[0]) * vertices.size();
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
 
     // Need to create a temporary CPU buffer to hold the vertex data.
-    //Vertex array creation step 1.
+    // Vertex array creation step 1.
     VkBufferCreateInfo bufferInfo1{};
     bufferInfo1.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo1.size = mVertexBufferSize;
@@ -306,125 +318,11 @@ void Renderer::createVertexBuffer(tinygltf::Model& model) {
 
     // Finally copy data from temporary buffer to permanent buffer.
     // Vertex array creation step 4.
-    copyBuffer(stagingBuffer, mVertexBuffer, mVertexBufferSize);
+    this->copyBuffer(stagingBuffer, mVertexBuffer, mVertexBufferSize);
 
     // Delete the temporary CPU buffer.
     mVulkanPointers.pDeviceFunctions->vkDestroyBuffer(mVulkanPointers.device, stagingBuffer, nullptr);
     mVulkanPointers.pDeviceFunctions->vkFreeMemory(mVulkanPointers.device, stagingBufferMemory, nullptr);
-
-    /*
-    std::vector<glm::vec3> vertices;
-
-    // First we need to extract 3D vertex data from glTF format. glTF data may consist several
-    // scenes, but we consider the defaultscene only. Let's enum all nodes in defaultScene:
-    for (int i = 0; i < model.scenes[model.defaultScene].nodes.size(); i++) {
-
-        // We investigate every node in defaultScene and their sub-nodes recursively.
-        int nodeIndex = model.scenes[model.defaultScene].nodes[i];
-        this->traverse(nodeIndex, model, vertices);
-    }
-
-    // Save the number of vertices.
-    //mVertexBufferSize = vertices.size();  // !!!USE THIS LINE IF YOU WANT TO USE GLTF FILES!!!
-    mVertexBufferSize = 3;  // !!!USE THIS IF YOU USE TEST TRIANGLE!!!
-
-    // Then create a vertex buffer for Vulkan...
-    // Vertex array creation step 1.
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = sizeof(vertices[0]) * mVertexBufferSize;
-    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    bufferInfo.queueFamilyIndexCount = 0;
-    bufferInfo.pQueueFamilyIndices = nullptr;
-    if (mVulkanPointers.pDeviceFunctions->vkCreateBuffer(
-        mVulkanPointers.device, &bufferInfo, nullptr, &mVertexBuffer) != VK_SUCCESS) {
-        qFatal("Failed to create vertex buffer!");
-    }
-
-    // ...tell what kind of memory is suitable for our buffer...
-    // Vertex array creation step 2.
-    VkMemoryRequirements memRequirements{};
-    mVulkanPointers.pDeviceFunctions->vkGetBufferMemoryRequirements(
-        mVulkanPointers.device, mVertexBuffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.pNext = NULL;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = 0;
-
-    VkPhysicalDeviceMemoryProperties memProperties{};
-    mVulkanPointers.pVulkanFunctions->vkGetPhysicalDeviceMemoryProperties(
-        mVulkanPointers.physicalDevice, &memProperties);
-
-    uint32_t vertexMemoryTypeBits = memRequirements.memoryTypeBits;
-    VkMemoryPropertyFlags vertexDesiredMemoryFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-    for (uint32_t i = 0; i < 32; ++i) {
-        VkMemoryType memoryType = memProperties.memoryTypes[i];
-        if (vertexMemoryTypeBits & 1) {
-            if ((memoryType.propertyFlags & vertexDesiredMemoryFlags) == vertexDesiredMemoryFlags) {
-                allocInfo.memoryTypeIndex = i;
-                break;
-            }
-        }
-        vertexMemoryTypeBits = vertexMemoryTypeBits >> 1;
-    }
-
-    // ...create that buffer memory...
-    // Vertex array creation step 3.
-    VkDeviceMemory vertexBufferMemory;
-    if (mVulkanPointers.pDeviceFunctions->vkAllocateMemory(
-        mVulkanPointers.device, &allocInfo, nullptr, &mVertexBufferMemory) != VK_SUCCESS) {
-        qFatal("Failed to allocate vertex buffer memory!");
-    }
-
-    // ...fill memory with the extracted vertex data...
-    // Vertex array creation step 4.
-    void* data;
-    if (!mVulkanPointers.pDeviceFunctions->vkMapMemory(
-        mVulkanPointers.device, mVertexBufferMemory, 0, bufferInfo.size, 0, &data) == VK_SUCCESS) {
-        qFatal("Failed to map vertex buffer memory.");
-    }
-
-    // !!!TEST TRIANGLE BELOW. USE IT IF YOU DON'T WANT TO VIEW GLTF FILES!!!
-    //float* triangle = (float*)data;
-    //triangle[0] = -1.0;
-    //triangle[1] = -1.0;
-    //triangle[2] = 0.9;
-    //triangle[3] = 1.0;
-    //triangle[4] = -1.0;
-    //triangle[5] = 0.9;
-    //triangle[6] = 0.0;
-    //triangle[7] = 1.0;
-    //triangle[8] = 0.9;
-    // !!!TEST TRIANGLE ABOVE!!!
-
-
-    // !!!TEST TRIANGLE BELOW. USE IT IF YOU DON'T WANT TO VIEW GLTF FILES!!!
-    float* triangle = (float*)data;
-    triangle[0] = -10.0;
-    triangle[1] = -10.0;
-    triangle[2] = 9;
-    triangle[3] = 10.0;
-    triangle[4] = -10.0;
-    triangle[5] = 9;
-    triangle[6] = 0.0;
-    triangle[7] = 10.0;
-    triangle[8] = 9;
-    // !!!TEST TRIANGLE ABOVE!!!
-
-    //memcpy(data, vertices.data(), (size_t)bufferInfo.size); // !!!USE THIS LINE IF YOU WANT TO USE GLTF FILES!!!
-
-    mVulkanPointers.pDeviceFunctions->vkUnmapMemory(mVulkanPointers.device, mVertexBufferMemory);
-
-    // ...and finally bind the vertex buffer memory.
-    // Vertex array creation step 5.
-    if (mVulkanPointers.pDeviceFunctions->vkBindBufferMemory(mVulkanPointers.device,
-        mVertexBuffer, mVertexBufferMemory, 0) != VK_SUCCESS) {
-        qFatal("Failed to bind vertex buffer memory!");
-    }
-    */
 }
 
 /// <summary>
@@ -439,220 +337,6 @@ void Renderer::deleteVertexBuffer() {
         mVertexBuffer = VK_NULL_HANDLE;
         mVertexBufferMemory = VK_NULL_HANDLE;
     }
-}
-
-
-void Renderer::traverse(int& nodeIndex, tinygltf::Model& model,
-    std::vector<glm::vec3>& vertices, glm::mat4x4 transformation) {
-
-    // Each node in glTF does or doesn't have a set of meshes. However, tinygltf can have only
-    // single mesh in a node. Let's investigate it.
-    int meshIndex = -1;
-    if (model.nodes.size() > nodeIndex) {
-        meshIndex = model.nodes[nodeIndex].mesh;
-
-        // If meshIndex is invalid, skip it.
-        if (meshIndex < 0) goto down;
-
-        std::vector<double> vec = model.nodes[nodeIndex].matrix;
-        if (vec.size() == 16) {
-            glm::mat4x4 mat = { vec[0], vec[1], vec[2], vec[3], vec[4], vec[5], vec[6], vec[7],
-                vec[8], vec[9], vec[10], vec[11], vec[12], vec[13], vec[14], vec[15] };
-            transformation = transformation * mat;
-        }
-
-        // Let's enum every primitive in a mesh.
-        for (int j = 0; j < model.meshes[meshIndex].primitives.size(); j++) {
-
-            // Each primitive has it's part of the vertex data, ie. indexes of accessors where
-            // vertex position, normal and texture coordinate data as well other attributes can be 
-            // acqured. CreateVertexBuffer creates a vertex buffer, so we are only interested to get 
-            // vertex positions. They can be served as indexed or non indexed data.
-            int indexAccessor = -1;
-            int positionAccessor = -1;
-            try {
-                auto temp = model.meshes[meshIndex].primitives[j].attributes.find("POSITION");
-                positionAccessor = temp->second;
-                indexAccessor = model.meshes[meshIndex].primitives[j].indices;
-            }
-            catch (...) {
-
-                // Three dots means we catch any exception and continue.
-                continue;
-            }
-            getPositions(vertices, model, positionAccessor, indexAccessor, transformation);
-        }
-    }
-
-down:
-
-    // Meshes are done for this node. Now check are there any child nodes.
-    std::vector<int> children = model.nodes[nodeIndex].children;
-    for (int j = 0; j < children.size(); j++) {
-        traverse(children[j], model, vertices, transformation);
-    }
-}
-
-/// <summary>
-/// This helper function reads vertexes from tinygltf model into a std::vector. 
-/// </summary>
-/// <param name="vertices">A vector where vertices are added into.</param>
-/// <param name="model">The source of vertices.</param>
-/// <param name="posAcc">A glTF accessor index where to find vertex positions.</param>
-/// <param name="indAcc">A glTF accessor index where to find vertex indices. If not available, ingnore.</param>
-void Renderer::getPositions(std::vector<glm::vec3>& vertices,
-    tinygltf::Model& model, int& posAcc, int indAcc, glm::mat4x4 transformation) {
-
-    // Always need position accessor.
-    if (posAcc < 0) return;
-
-    // Index accessor is not needed necessarily.
-    if (indAcc < 0) {
-
-        // We have only positions. Ensure they are float 3D vectors.
-        if (model.accessors[posAcc].componentType == TINYGLTF_COMPONENT_TYPE_FLOAT &&
-            model.accessors[posAcc].type == TINYGLTF_TYPE_VEC3) {
-
-            // Get the index and offset of the bufferView to get the buffer.
-            int bufferView = model.accessors[posAcc].bufferView;
-            int byteOffsetBufferView = model.accessors[posAcc].byteOffset;
-
-            // Get the index, offset of the stride, lengt and stride of the buffer 
-            // to get the vectors.
-            int bufferIndex = model.bufferViews[bufferView].buffer;
-            int byteOffsetStride = model.bufferViews[bufferView].byteOffset;
-            int byteLength = model.bufferViews[bufferView].byteLength;
-            int byteStride = std::max(model.bufferViews[bufferView].byteStride, size_t(12));
-
-            // Store each position into the vertices vector. Suppose big endian
-            // byte order.
-            std::vector<unsigned char> buffer = model.buffers[bufferIndex].data;
-            for (int i = 0; i < (byteLength / byteStride); i++) {
-
-                uint8_t c1 = buffer[3 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                uint8_t c2 = buffer[2 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                uint8_t c3 = buffer[1 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                uint8_t c4 = buffer[0 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                uint32_t four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos1;
-                std::memcpy(&pos1, &four, sizeof(float));
-
-                c1 = buffer[7 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c2 = buffer[6 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c3 = buffer[5 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c4 = buffer[4 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos2;
-                std::memcpy(&pos2, &four, sizeof(float));
-
-                c1 = buffer[11 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c2 = buffer[10 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c3 = buffer[9 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                c4 = buffer[8 + i * byteStride + byteOffsetBufferView + byteOffsetStride];
-                four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos3;
-                std::memcpy(&pos3, &four, sizeof(float));
-
-                // Need to transform vertex position into its absolute position in space.
-                // This makes the Model matrix computation in common ModelViewProjection
-                // matrix computation chain.
-                glm::vec4 position(pos1, pos2, pos3, 1.0);
-                position = transformation * position;
-
-                // Need to update minmax.
-                this->setMinMax(position);
-
-                vertices.push_back(position);
-            }
-        }
-    }
-    else {
-
-        // We have indexers too. Ensure they are unsigned short scalars and positions
-        // are float 3D vectors.
-        if (model.accessors[indAcc].componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT &&
-            model.accessors[indAcc].type == TINYGLTF_TYPE_SCALAR &&
-            model.accessors[posAcc].componentType == TINYGLTF_COMPONENT_TYPE_FLOAT &&
-            model.accessors[posAcc].type == TINYGLTF_TYPE_VEC3) {
-
-            // Get the indexes and offsets of the bufferViews to get the data of
-            // positions and indexes.
-            int bufferViewPos = model.accessors[posAcc].bufferView;
-            int byteOffsetBufferViewPos = model.accessors[posAcc].byteOffset;
-            int bufferViewInd = model.accessors[indAcc].bufferView;
-            int byteOffsetBufferViewInd = model.accessors[indAcc].byteOffset;
-
-            // Get the index, offset of the stride, lengt and stride of the buffer 
-            // to get the vectors and their indexes.
-            int bufferIndexPos = model.bufferViews[bufferViewPos].buffer;
-            int byteOffsetStridePos = model.bufferViews[bufferViewPos].byteOffset;
-            int byteLengthPos = model.bufferViews[bufferViewPos].byteLength;
-            int byteStridePos = std::max(model.bufferViews[bufferViewPos].byteStride, size_t(12));
-            int bufferIndexInd = model.bufferViews[bufferViewInd].buffer;
-            int byteOffsetStrideInd = model.bufferViews[bufferViewInd].byteOffset;
-            int byteLengthInd = model.bufferViews[bufferViewInd].byteLength;
-            int byteStrideInd = std::max(model.bufferViews[bufferViewInd].byteStride, size_t(2));
-
-            // Store each position into the vertices vector. Suppose big endian
-            // byte order. Now each scalar index represent the location of one position 
-            // whose vector can be found in that index.
-            std::vector<unsigned char> bufferInd = model.buffers[bufferIndexInd].data;
-            std::vector<unsigned char> bufferPos = model.buffers[bufferIndexPos].data;
-            for (int i = 0; i < (byteLengthInd / byteStrideInd); i++) {
-
-                uint16_t index = ((uint16_t)((bufferInd[1 + i * byteStrideInd + byteOffsetBufferViewInd + byteOffsetStrideInd] << 8) |
-                    bufferInd[0 + i * byteStrideInd + byteOffsetBufferViewInd + byteOffsetStrideInd]));
-
-                uint8_t c1 = bufferPos[3 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                uint8_t c2 = bufferPos[2 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                uint8_t c3 = bufferPos[1 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                uint8_t c4 = bufferPos[0 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                uint32_t four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos1;
-                std::memcpy(&pos1, &four, sizeof(float));
-
-                c1 = bufferPos[7 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c2 = bufferPos[6 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c3 = bufferPos[5 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c4 = bufferPos[4 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos2;
-                std::memcpy(&pos2, &four, sizeof(float));
-
-                c1 = bufferPos[11 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c2 = bufferPos[10 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c3 = bufferPos[9 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                c4 = bufferPos[8 + index * byteStridePos + byteOffsetBufferViewPos + byteOffsetStridePos];
-                four = ((c1 << 24) | (c2 << 16) | (c3 << 8) | (c4 << 0));
-                float pos3;
-                std::memcpy(&pos3, &four, sizeof(float));
-
-                // Need to transform vertex position into its absolute position in space.
-                // This makes the Model matrix computation in common ModelViewProjection
-                // matrix computation chain.
-                glm::vec4 position(pos1, pos2, pos3, 1.0);
-                position = transformation * position;
-
-                // Need to update minmax.
-                this->setMinMax(position);
-
-                vertices.push_back(position);
-            }
-        }
-    }
-}
-
-/// <summary>
-/// This function is used to find out the absolute bounding box consisting the whole scene.
-/// </summary>
-/// <param name="vec"></param>
-void Renderer::setMinMax(glm::vec4& vec) {
-    mMax.x = std::max(mMax.x, vec.x);
-    mMax.y = std::max(mMax.y, vec.y);
-    mMax.z = std::max(mMax.z, vec.z);
-    mMin.x = std::min(mMin.x, vec.x);
-    mMin.y = std::min(mMin.y, vec.y);
-    mMin.z = std::min(mMin.z, vec.z);
 }
 
 /// <summary>
@@ -809,11 +493,12 @@ void Renderer::updateUniformBuffer() {
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     // These are temporary testing.
-    mUboMVPMatrices.modelMatrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    mUboMVPMatrices.viewMatrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    mUboMVPMatrices.projectionMatrix = glm::perspective(glm::radians(45.0f),
+    glm::mat4 modelMatrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 viewMatrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 projectionMatrix = glm::perspective(glm::radians(45.0f),
         mSwapChainRes.swapChainImageSize.width / (float)mSwapChainRes.swapChainImageSize.height, 0.1f, 10.0f);
-    mUboMVPMatrices.projectionMatrix[1][1] *= -1;
+    projectionMatrix[1][1] *= -1;
+    mUboMVPMatrices.modelViewProjectionMatrix = projectionMatrix * viewMatrix * modelMatrix;
 
     // Update uniform buffer with the mUboMVPMatrices struct.
     // Uniform buffer creation step 10.
@@ -827,8 +512,8 @@ void Renderer::updateUniformBuffer() {
 void Renderer::render() {
 
     // First set model matrix to rotate the object and after that update uniforms.
-    setModelMatrix();
-    updateUniformBuffer();
+    this->setModelMatrix();
+    this->updateUniformBuffer();
 
     // Wait until GPU has done previous rendering.
     mVulkanPointers.pDeviceFunctions->vkWaitForFences(
@@ -849,8 +534,13 @@ void Renderer::render() {
         mCommandBuffers[mCurrentFrame], &beginInfo);
 
     // Begin render pass.
-    QSize swapChainImageSize = mVulkanPointers.pVulkanWindow->size() *
-        mVulkanPointers.pVulkanWindow->devicePixelRatio();
+    QSize swapChainImageSize;
+    if (std::shared_ptr ptr = mVulkanPointers.vulkanWindow.lock()) {
+        swapChainImageSize = ptr->size() * ptr->devicePixelRatio();
+    }
+    else {
+        qFatal("VulkanWindow object is empty.");
+    }
     VkRenderPassBeginInfo renderPassBeginInfo = {};
     renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassBeginInfo.renderPass = mSwapChainRes.renderPass;
@@ -956,8 +646,8 @@ void Renderer::createGraphicsPipeline() {
         qFatal("vkCreateDescriptorSetLayout failed (%d)", (uint32_t)err);
 
     // Create shaders.
-    VkShaderModule vertShaderModule = createShaderModule(VERTEX_SPIR);
-    VkShaderModule fragShaderModule = createShaderModule(FRAGMENT_SPIR);
+    VkShaderModule vertShaderModule = this->createShaderModule(VERTEX_SPIR);
+    VkShaderModule fragShaderModule = this->createShaderModule(FRAGMENT_SPIR);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1156,10 +846,19 @@ void Renderer::createSyncObjects() {
 /// This function deletes semaphores and fences.
 /// </summary>
 void Renderer::deleteSyncObjects() {
+
+    // Wait until GPU has done previous rendering.
+    mVulkanPointers.pDeviceFunctions->vkDeviceWaitIdle(mVulkanPointers.device);
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        mVulkanPointers.pDeviceFunctions->vkDestroySemaphore(mVulkanPointers.device, mRenderingCompleteSemaphores[i], nullptr);
-        mVulkanPointers.pDeviceFunctions->vkDestroySemaphore(mVulkanPointers.device, mImageAvailableSemaphores[i], nullptr);
-        mVulkanPointers.pDeviceFunctions->vkDestroyFence(mVulkanPointers.device, mRenderFences[i], nullptr);
+        if (mRenderingCompleteSemaphores[i] != VK_NULL_HANDLE && mImageAvailableSemaphores[i] != VK_NULL_HANDLE && mRenderFences[i] != VK_NULL_HANDLE) {
+            mVulkanPointers.pDeviceFunctions->vkDestroySemaphore(mVulkanPointers.device, mRenderingCompleteSemaphores[i], nullptr);
+            mRenderingCompleteSemaphores[i] = VK_NULL_HANDLE;
+            mVulkanPointers.pDeviceFunctions->vkDestroySemaphore(mVulkanPointers.device, mImageAvailableSemaphores[i], nullptr);
+            mImageAvailableSemaphores[i] = VK_NULL_HANDLE;
+            mVulkanPointers.pDeviceFunctions->vkDestroyFence(mVulkanPointers.device, mRenderFences[i], nullptr);
+            mRenderFences[i] = VK_NULL_HANDLE;
+        }
     }
 }
 
@@ -1187,7 +886,6 @@ VkShaderModule Renderer::createShaderModule(std::string file) {
                 qFatal("Failed to open file: %s", file.c_str());
                 return nullptr;
             }
-            //reader.seekg(0, reader.end);
             length = reader.tellg();
             reader.seekg(0, reader.beg);
             data = std::make_unique<char[]>(length);
@@ -1278,8 +976,12 @@ void Renderer::createSwapChain(const SwapChainSupportDetails& details, int* colo
     int* depthFormat, VkSwapchainKHR oldSwapChain) {
 
     // Test do we have a window.
-    mSwapChainImageSize = mVulkanPointers.pVulkanWindow->size() *
-        mVulkanPointers.pVulkanWindow->devicePixelRatio();
+    if (std::shared_ptr ptr = mVulkanPointers.vulkanWindow.lock()) {
+        mSwapChainImageSize = ptr->size() * ptr->devicePixelRatio();
+    }
+    else {
+        qFatal("VulkanWindow object is empty.");
+    }
     if (mSwapChainImageSize.isEmpty()) return;
 
     // Test do we have valid SwapChainSupportDetails struct.
@@ -1297,7 +999,7 @@ void Renderer::createSwapChain(const SwapChainSupportDetails& details, int* colo
     VkFormat cFormat = VK_FORMAT_UNDEFINED;
     VkColorSpaceKHR colorSpace;
     if (depthFormat == nullptr) {
-        dFormat = findSupportedDepthFormat(
+        dFormat = this->findSupportedDepthFormat(
             { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
             VK_IMAGE_TILING_OPTIMAL,
             VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
@@ -1593,6 +1295,8 @@ void Renderer::deleteSwapChain() {
         if (mSwapChainRes.swapChainImageViews[i]) {
             mVulkanPointers.pDeviceFunctions->vkDestroyImageView(mVulkanPointers.device,
                 mSwapChainRes.swapChainImageViews[i], nullptr);
+            //mVulkanPointers.pDeviceFunctions->vkDestroyImage(mVulkanPointers.device,
+            //    mSwapChainRes.swapChainImages[i], nullptr);
             mSwapChainRes.swapChainImageViews[i] = VK_NULL_HANDLE;
             mVulkanPointers.pDeviceFunctions->vkDestroyFramebuffer(mVulkanPointers.device,
                 mSwapChainRes.swapChainFrameBuffers[i], nullptr);

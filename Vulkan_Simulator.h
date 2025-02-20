@@ -14,8 +14,7 @@ enum class LinuxDisplayType : uint8_t {
 	None
 };
 
-class VulkanWindow : public QWindow
-{
+class VulkanWindow : public std::enable_shared_from_this<VulkanWindow>, public QWindow {
 
 public:
 
@@ -55,7 +54,7 @@ private:
 	QMatrix4x4 mClipCorrect = QMatrix4x4();
 	VulkanPointers mVulkanPointers;
 	std::unique_ptr<Renderer> mRenderer = nullptr;
-	std::unique_ptr<FileReader> mFileReader = nullptr;
+	std::shared_ptr<FileReader> mFileReader = nullptr;
 	QTimer* mTimer = nullptr;
 	VkDebugUtilsMessengerEXT mDebugMessenger = VK_NULL_HANDLE;
 };

@@ -17,7 +17,7 @@ VulkanWindow::~VulkanWindow()
     qDebug("VulkanWindow deletor");
 
     delete mTimer;
-    release();
+    this->release();
 }
 
 void VulkanWindow::release()
@@ -28,15 +28,23 @@ void VulkanWindow::release()
 
     vkDeviceWaitIdle(mVulkanPointers.device);
 
+    // Play nice and notify QVulkanInstance that the QVulkanDeviceFunctions
+    // for mDevice needs to be invalidated.
+    ///vulkanInstance()->resetDeviceFunctions(mVulkanPointers.device);  // DOESN'T WORK, LET BE.
+
+    // Delete Vulkan logical device.
     if (mVulkanPointers.device)
     {
         vkDestroyDevice(mVulkanPointers.device, nullptr);
-
-        // Play nice and notify QVulkanInstance that the QVulkanDeviceFunctions
-        // for mDevice needs to be invalidated.
-     ///   vulkanInstance()->resetDeviceFunctions(mDevice);  // TODO: destroy everything before using this!
+        if (enableValidationLayers) {
+            this->releaseDebugMesseger();
+        }
         mVulkanPointers.device = VK_NULL_HANDLE;
     }
+
+    // Delete Vulkan instance.
+    vkDestroyInstance(mVulkanPointers.instance, nullptr);
+    mVulkanPointers.instance = VK_NULL_HANDLE;
 
     mVulkanPointers.surface = VK_NULL_HANDLE;
 }
@@ -74,14 +82,27 @@ QMatrix4x4 VulkanWindow::clipCorrectionMatrix()
 /// <param name="instance">Qt libaray wrapper for Vulkan instance.</param>
 void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
     this->setVulkanInstance(&instance);
+    /*
+    // Create a shared pointer to own the object
+    mVulkanPointers.fileReader = std::make_shared<FileReader>();
 
+    // Create a weak pointer (that does not own the object)
+    std::weak_ptr<FileReader> q(mVulkanPointers.fileReader);
+
+    // Use the weak pointer some time later
+    if (std::shared_ptr ptr = q.lock()) {
+        // use *ptr
+    }
+    */
     // Get window, surface and Vulkan instance function pointers.
-    mVulkanPointers.pVulkanWindow = this;
+    mVulkanPointers.vulkanWindow = this->shared_from_this();
+    //mVulkanPointers.fileReader = std::weak_ptr<FileReader>(mFileReader);
     mVulkanPointers.pVulkanFunctions = this->vulkanInstance()->functions();
     mVulkanPointers.pInstance = &instance;
     mVulkanPointers.instance = instance.vkInstance();
-    mVulkanPointers.surface = this->vulkanInstance()->surfaceForWindow(
-        mVulkanPointers.pVulkanWindow);
+    mVulkanPointers.surface = this->vulkanInstance()->surfaceForWindow(this);
+    mFileReader = std::make_shared<FileReader>();
+    mVulkanPointers.fileReader = std::weak_ptr<FileReader>(mFileReader);
 
     // Let user select a glTF file to be shown.
     QString filename = QFileDialog::getOpenFileName(
@@ -98,10 +119,10 @@ void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
     mVulkanPointers.path = filename.toStdString();
 
     // Setup Vulkan device, physical device, queues and command pool.
-    init();
+    this->init();
 
     // Load glTF file and setup other needed Vulkan stuff.
-    initResources();
+    this->initResources();
 
     // Start VulkanWindow refresh timer. There seems not to be a possibility to use std::unique_ptr
     // with QTimer, so let's use the good old wintage methods new and delete.
@@ -123,12 +144,12 @@ void VulkanWindow::init()
     if (!mVulkanPointers.surface) qFatal("Failed to get surface for window.");
 
     // Setup function pointers regarding to the physical device.
-    initPhysDeviceFunctions();
+    this->initPhysDeviceFunctions();
 
     if (enableValidationLayers) {
 
         //If we want to use custom debug messenger.
-        setupDebugMessenger();
+        this->setupDebugMessenger();
     }
 
     // Enumerate Vulkan physical devices.
@@ -153,7 +174,7 @@ void VulkanWindow::init()
 
         // Do we have a discrete GPU?
         if (physDeviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && discrete == -1) {
-            if (isDeviceSuitable(physDevices[i], mVulkanPointers.surface, discreteQFI, discreteSCSD)) {
+            if (this->isDeviceSuitable(physDevices[i], mVulkanPointers.surface, discreteQFI, discreteSCSD)) {
                 discrete = i;
                 qDebug("Discrete device name: %s Driver version: %d.%d.%d",
                     physDeviceProps.deviceName,
@@ -165,7 +186,7 @@ void VulkanWindow::init()
 
         // Do we have an integrated GPU?
         if (physDeviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU && integrated == -1) {
-            if (isDeviceSuitable(physDevices[i], mVulkanPointers.surface, integratedQFI, integratedSCSD)) {
+            if (this->isDeviceSuitable(physDevices[i], mVulkanPointers.surface, integratedQFI, integratedSCSD)) {
                 integrated = i;
                 qDebug("Integrated device name: %s Driver version: %d.%d.%d",
                     physDeviceProps.deviceName,
@@ -245,7 +266,7 @@ void VulkanWindow::init()
         deviceFunctions(mVulkanPointers.device);
 
     // Setup function pointers regarding to the logical device.
-    initDeviceFunctions();
+    this->initDeviceFunctions();
 
     // Create Renderer class instance.
     if (!mVulkanPointers.swapChainSupportDetails.capabilities.has_value() ||
@@ -266,7 +287,7 @@ void VulkanWindow::init()
 }
 
 /// <summary>
-/// This helper function loads glTF file and creates vertex buffers. Before calling 
+/// InitResources loads glTF file and creates vertex buffers. Before calling 
 /// this function call init() first! 
 /// </summary>
 void VulkanWindow::initResources()
@@ -274,9 +295,12 @@ void VulkanWindow::initResources()
     qInfo("initResources");
 
     // Load 3D model into memory.
+    /*
     if (mFileReader == nullptr) {
-        mFileReader = std::make_unique<FileReader>();
+        mFileReader = std::make_shared<FileReader>();
+        mVulkanPointers.fileReader = std::weak_ptr<FileReader>(mFileReader);
     }
+    */
     if (!mFileReader->loadFile(mVulkanPointers.path))
         qFatal("Couldn't load a file!");
 
@@ -474,7 +498,7 @@ void VulkanWindow::exposeEvent(QExposeEvent*) {
     if (isExposed() && !mInitialized)
     {
         mInitialized = true;
-        initSwapChainResources();
+        this->initSwapChainResources();
         mRenderer->render();
     }
 
@@ -483,8 +507,8 @@ void VulkanWindow::exposeEvent(QExposeEvent*) {
     // background.
     if (!isExposed() && mInitialized) {
         mInitialized = false;
-        releaseSwapChainResources();
-        releaseResources();
+        this->releaseSwapChainResources();
+        this->releaseResources();
     }
 }
 
@@ -492,7 +516,7 @@ bool VulkanWindow::event(QEvent* e) {
 
     if (mRenderer != nullptr && mStart == true) {
         mStart = false;
-        initSwapChainResources();
+        this->initSwapChainResources();
         mRenderer->render();
     }
 
@@ -510,8 +534,8 @@ bool VulkanWindow::event(QEvent* e) {
     case QEvent::PlatformSurface: {
         auto* ev = static_cast<QPlatformSurfaceEvent*>(e);
         if (ev->surfaceEventType() == QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
-            releaseSwapChainResources();
-            releaseResources();
+            this->releaseSwapChainResources();
+            this->releaseResources();
         }
         break;
     }
@@ -586,14 +610,14 @@ void VulkanWindow::releaseResources()
     mVulkanPointers.pDeviceFunctions->vkDeviceWaitIdle(mVulkanPointers.device);
 
     mRenderer->deleteVertexBuffer();
-    mRenderer->deleteCommandPool();
     mRenderer->deleteUniformBuffers();
     mRenderer->deleteSyncObjects();
+    mRenderer->deleteCommandPool();
     mRenderer->deleteGraphicsPipeline();
 
-    if (enableValidationLayers) {
-        releaseDebugMesseger();
-    }
+    //if (enableValidationLayers) {
+    //    releaseDebugMesseger();
+    //}
 }
 
 /// <summary>
@@ -643,7 +667,17 @@ VkInstance VulkanWindow::createInstance() {
     qFatal("Failed to create Vulkan instance!");
     return VK_NULL_HANDLE;
 }
+/*
+/// <summary>
+/// Need to use deleteInstance function to delete Vulkan instance.
+/// </summary>
+/// <param name="instance"></param>
+void VulkanWindow::deleteInstance(VkInstance instance) {
 
+    vkDeviceWaitIdle(mVulkanPointers.device);
+    vkDestroyInstance(instance, nullptr);
+}
+*/
 /// <summary>
 /// This function collects necessary instance extensions. All of these extensions may not be able to 
 /// define in compile time, so we define them dynamically.
@@ -750,9 +784,9 @@ int main(int argc, char* argv[])
     QLoggingCategory::setFilterRules(QStringLiteral("qt.vulkan=true"));
 
     // Create a window to render into.
-    VulkanWindow w;
-    w.resize(1024, 768);
-    w.show();
+    auto w = std::make_shared<VulkanWindow>();
+    w->resize(1024, 768);
+    w->show();
 
     // If we are running on debug mode, create Vulkan validation layers. 
     QVulkanInstance inst;
@@ -771,7 +805,7 @@ int main(int argc, char* argv[])
 
     // Install needed Vulkan instance extensions.
     QByteArrayList list;
-    std::vector<const char*> temp = w.getRequiredInstanceExtensions();
+    std::vector<const char*> temp = w->getRequiredInstanceExtensions();
     for (auto extension : temp) {
         list.append(extension);
     }
@@ -779,7 +813,7 @@ int main(int argc, char* argv[])
 
     // Assing our own self created Vulkan instance for QVulkanInstance so that it doesn't
     // make its' default instance.
-    VkInstance instance = w.createInstance();
+    VkInstance instance = w->createInstance();
     if (instance == VK_NULL_HANDLE)
     {
         qFatal("Failed to create VkInstance!");
@@ -793,7 +827,7 @@ int main(int argc, char* argv[])
 
     // Connect QVulkanInstance with VulkanWindow. This also loads other Vulkan stuff and let
     // user choose gltf file to show on window.
-    w.setupVulkanInstance(inst);
+    w->setupVulkanInstance(inst);
 
     // Finally start application.
     return app.exec();

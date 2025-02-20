@@ -146,6 +146,7 @@ static const VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {
 
 class VulkanRenderer;
 class VulkanWindow;
+class FileReader;
 
 struct Vertex {
     glm::vec3 pos;
@@ -164,7 +165,8 @@ struct SwapChainSupportDetails {
 };
 
 struct VulkanPointers {
-    VulkanWindow* pVulkanWindow = nullptr;
+    std::weak_ptr<VulkanWindow> vulkanWindow;
+    std::weak_ptr<FileReader> fileReader;
     QVulkanDeviceFunctions* pDeviceFunctions = nullptr;
     QVulkanFunctions* pVulkanFunctions = nullptr;
     QVulkanInstance* pInstance = nullptr;

@@ -3,7 +3,7 @@
   "defaults": {},
   "configurations": [
     {
-      "type": "x64-Degug",
+      "type": "default",
       "project": "CMakeLists.txt",
       "projectTarget": "Vulkan_Simulator.exe",
       "name": "Vulkan_Simulator.exe"
@@ -14,28 +14,39 @@
       "project": "CMakeLists.txt",
       "projectTarget": "Vulkan_Simulator",
       "debuggerConfiguration": "gdb",
+      "preDebugCommand": null,
+      "externalConsole": true,
+      "remoteMachineName": "192.168.10.64",
+      "program": "C:\\Users\\Mikael\\source\\repos\\mamannon\\Vulkan_Simulator\\out\\build\\Linux-GCC-Debug\\Vulkan_Simulator",
+      "cwd": "${workspaceRoot}",
       "args": [],
-      "env": {},
-      "pipeTransport": {
-        "pipeProgram": "${debugInfo.shellexecPath}",
-        "pipeArgs": [
-          "/s",
-          "${debugInfo.remoteMachineId}",
-          "/p",
-          "${debugInfo.parentProcessId}",
-          "/c",
-          "export DISPLAY=:0;${debuggerCommand}",
-          "--tty=${debugInfo.tty}"
-        ],
-        "pipeCmd": [
-          "/s",
-          "${debugInfo.remoteMachineId}",
-          "/p",
-          "${debugInfo.parentProcessId}",
-          "/c",
-          "${debuggerCommand}"
-        ]
-      }
+      "env": {
+        "DISPLAY": "0.0",
+        "DEBUG_LOGGING_LEVEL": "trace;info",
+        "ENABLE_TRACING": "true"
+      },
+      "setupCommands": [
+        {
+          "text": "set sysroot ."
+        },
+        {
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "pipeTransport": { "disable": true },
+      //"visualizerFile": "${debugInfo.linuxNatvisPath}",
+      "showDisplayString": true,
+      "comment": "Learn how to configure remote debugging. For more info, see http://aka.ms/vslinuxdebug",
+      "MIMode": "gdb",
+      //"miDebuggerArgs": "--interpreter=mi2",
+      "miDebuggerPath": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\VC\\Linux\\bin\\gdb\\gdb-multiarch\\gdb-multiarch.exe",
+      "miDebuggerServerAddress": "192.168.10.64:1234",
+
+      // RemotePrelaunchCommand does not work for me. To get debugging working, I need to write command below in 
+      // the terminal of the Linux machine before starting debugging in Visual Studio.
+      "remotePrelaunchCommand": "gdbserver :1234 /home/mikael/.vs/Vulkan_Simulator/out/build/Linux-GCC-Debug/Vulkan_Simulator >& /dev/null",
+      "remotePrelaunchWait": "2000"
     }
   ]
 }
