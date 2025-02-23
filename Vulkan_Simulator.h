@@ -22,8 +22,6 @@ public:
 	virtual ~VulkanWindow();
 	VkPhysicalDevice physicalDevice() { return mVulkanPointers.physicalDevice; }
 	VkDevice device() { return mVulkanPointers.device; }
-	QMatrix4x4 clipCorrectionMatrix();
-	QSize swapChainImageSize() { return QSize(this->width(), this->height()); }
 	void setupVulkanInstance(QVulkanInstance& instance);
 	VkInstance createInstance();
 	std::vector<const char*> getRequiredInstanceExtensions();
@@ -34,6 +32,7 @@ private:
 	void exposeEvent(QExposeEvent*) override;
 	void resizeEvent(QResizeEvent*) override;
 	bool event(QEvent*) override;
+	void closeEvent(QCloseEvent*) override;
 	void refresh();
 	void init();
 	void initResources();

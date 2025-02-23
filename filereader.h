@@ -19,6 +19,8 @@ class FileReader {
 			tinygltf::Model& model, int& posAcc, int indAcc = -1, int colorAcc = -1,
 			glm::mat4x4 transformation = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 });
 		void setMinMax(glm::vec4& vec);
+		glm::vec3 getMin() { return mMin; }
+		glm::vec3 getMax() { return mMax; }
 		std::optional<glm::vec4> getColor(tinygltf::Model& model, const int& colorAcc, const unsigned int& index);
 
 	protected:
@@ -29,7 +31,6 @@ class FileReader {
 		std::unique_ptr<tinygltf::TinyGLTF> mpLoader = nullptr;
 		glm::vec3 mMin = { -1, -1, -1 };
 		glm::vec3 mMax = { 1, 1, 1 };
-
 };
 
 #endif

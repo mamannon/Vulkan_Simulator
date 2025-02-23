@@ -50,53 +50,15 @@ void VulkanWindow::release()
 }
 
 /// <summary>
-///Returns a QMatrix4x4 that can be used to correct for coordinate
-///system differences between OpenGL and Vulkan.
-///
-///By pre - multiplying the projection matrix with this matrix, applications can
-///continue to assume that Y is pointing upwards, and can set minDepthand
-///maxDepth in the viewport to 0 and 1, respectively, without having to do any
-///further corrections to the vertex Z positions.Geometry from OpenGL
-///applications can then be used as - is, assuming a rasterization state matching
-///the OpenGL cullingand front face settings.
-/// </summary>
-/// <returns></returns>
-QMatrix4x4 VulkanWindow::clipCorrectionMatrix()
-{
-
-    if (mClipCorrect.isIdentity()) {
-
-        // The QMatrix creator takes row-major.
-        mClipCorrect = QMatrix4x4(1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, -1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, -1.0f, 0.5f,
-            0.0f, 0.0f, 0.0f, 1.0f);
-    }
-    return mClipCorrect;
-}
-
-/// <summary>
 /// SetupVulkanInstance function collects together other Vulkan initialization functions. It needs a valid
 /// initalized Vulkan instance as a parameter.
 /// </summary>
 /// <param name="instance">Qt libaray wrapper for Vulkan instance.</param>
 void VulkanWindow::setupVulkanInstance(QVulkanInstance& instance) {
     this->setVulkanInstance(&instance);
-    /*
-    // Create a shared pointer to own the object
-    mVulkanPointers.fileReader = std::make_shared<FileReader>();
 
-    // Create a weak pointer (that does not own the object)
-    std::weak_ptr<FileReader> q(mVulkanPointers.fileReader);
-
-    // Use the weak pointer some time later
-    if (std::shared_ptr ptr = q.lock()) {
-        // use *ptr
-    }
-    */
     // Get window, surface and Vulkan instance function pointers.
     mVulkanPointers.vulkanWindow = this->shared_from_this();
-    //mVulkanPointers.fileReader = std::weak_ptr<FileReader>(mFileReader);
     mVulkanPointers.pVulkanFunctions = this->vulkanInstance()->functions();
     mVulkanPointers.pInstance = &instance;
     mVulkanPointers.instance = instance.vkInstance();
@@ -281,7 +243,7 @@ void VulkanWindow::init()
     mRenderer->setModelMatrix();
     mRenderer->createSyncObjects();
     mRenderer->createCommandPool();
-    mRenderer->createSwapChain(mVulkanPointers.swapChainSupportDetails, nullptr, nullptr, mRenderer->getSwapChain());
+    this->initSwapChainResources();
     mRenderer->createGraphicsPipeline();
     mRenderer->createUniformBuffers();
 }
@@ -295,12 +257,6 @@ void VulkanWindow::initResources()
     qInfo("initResources");
 
     // Load 3D model into memory.
-    /*
-    if (mFileReader == nullptr) {
-        mFileReader = std::make_shared<FileReader>();
-        mVulkanPointers.fileReader = std::weak_ptr<FileReader>(mFileReader);
-    }
-    */
     if (!mFileReader->loadFile(mVulkanPointers.path))
         qFatal("Couldn't load a file!");
 
@@ -331,7 +287,7 @@ void VulkanWindow::releaseDebugMesseger() {
 /// </summary>
 /// <param name="device">VkPhysicalDevice handle.</param>
 /// <param name="surface">Window we render into.</param>
-/// <returns></returns>
+/// <returns>Did it succeed?</returns>
 bool VulkanWindow::isDeviceSuitable(const VkPhysicalDevice& device,
     const VkSurfaceKHR& surface, QueueFamilyIndices& qfi, SwapChainSupportDetails& scsd)
 {
@@ -485,33 +441,62 @@ void VulkanWindow::initPhysDeviceFunctions() {
             vkGetInstanceProcAddr(mVulkanPointers.instance, "vkDestroyDebugUtilsMessengerEXT"));
 }
 
+/// <summary>
+/// Refresh function is constantly called by QTimer.
+/// </summary>
 void VulkanWindow::refresh() {
-    if (!mStart && mInitialized)
+    if (!mStart && mInitialized) {
+        mRenderer->setModelMatrix();
         mRenderer->render();
+    }
 }
 
+/// <summary>
+/// ResizeEvent method is called when user adjusts window size.
+/// </summary>
+/// <param name=""></param>
 void VulkanWindow::resizeEvent(QResizeEvent*) {
     // TODO: Implement this.
+    qFatal("ResizeEvent is not implemented!");
 }
 
+/// <summary>
+/// ExposeEvent handler is needed when QWindow is minimized or restored.
+/// </summary>
+/// <param name=""></param>
 void VulkanWindow::exposeEvent(QExposeEvent*) {
+
+    // When Window is restored, rendering must continue.
     if (isExposed() && !mInitialized)
     {
         mInitialized = true;
-        this->initSwapChainResources();
+        //this->initSwapChainResources();
         mRenderer->render();
     }
 
-    // Release everything when unexposed - the meaning of which is platform
-    // specific. Can be essential on mobile, to release resources while in
-    // background.
+    // When Window is minimized, rendering must pause.
     if (!isExposed() && mInitialized) {
+        vkDeviceWaitIdle(mVulkanPointers.device);
         mInitialized = false;
-        this->releaseSwapChainResources();
-        this->releaseResources();
+        //this->releaseSwapChainResources();
     }
 }
 
+/// <summary>
+/// CloseEvent handler is the right place to delete Vulkan resources. But just in case resources deletion is also 
+/// done in QWindow event handler in case QEvent::PlatformSurface.
+/// </summary>
+/// <param name="e"></param>
+void VulkanWindow::closeEvent(QCloseEvent* e) {
+    this->releaseSwapChainResources();
+    this->releaseResources();
+}
+
+/// <summary>
+/// QWindow event handler.
+/// </summary>
+/// <param name="e"></param>
+/// <returns></returns>
 bool VulkanWindow::event(QEvent* e) {
 
     if (mRenderer != nullptr && mStart == true) {
@@ -555,16 +540,11 @@ void VulkanWindow::initSwapChainResources()
 {
     qDebug("initSwapChainResources");
 
+    // Get window width and height values.
+    const QSize size = this->size() * this->devicePixelRatio();
+
     // Every window recreate need to set projection matrix in a case user resizes window.
-    // Use this...
-    QMatrix4x4 proj1 = clipCorrectionMatrix();
-    const QSize size = swapChainImageSize();
-    proj1.perspective(45.0f, size.width() / (float)size.height(), 0.1f, 1000.0f);
-
-
-
-    // Perspective projection parameters.
-    // ...or this.
+    // We use OpenGL compliant perspective projection parameters.
     float fov = 45.0f;
     float aspectRatio = size.width() / (float)size.height();
     float nearZ = 0.1f;
@@ -573,21 +553,20 @@ void VulkanWindow::initSwapChainResources()
     float bottom = -top;
     float right = top * aspectRatio;
     float left = -right;
-    QMatrix4x4 proj2 = QMatrix4x4(2 * nearZ / (right - left), 0, (right + left) / (right - left), 0,
+    QMatrix4x4 proj = QMatrix4x4(2 * nearZ / (right - left), 0, (right + left) / (right - left), 0,
         0, 2 * nearZ / (top - bottom), (top + bottom) / (top - bottom), 0,
         0, 0, -(farZ + nearZ) / (farZ - nearZ), -(2 * farZ * nearZ) / (farZ - nearZ),
         0, 0, -1, 0);
 
-    proj2 = proj2 * clipCorrectionMatrix();
-    /*
-    mRenderer->setProjectionMatrix(proj2.data());
+    // Now view is upside down, because Vulkan uses Y-axis down parameters. But we can fix this to Vulkan compliant:
+    proj(1, 1) *= -1;
+    mRenderer->setProjectionMatrix(proj.data());
 
     // Then create swap chain.
     if (mRenderer->getSwapChain() != VK_NULL_HANDLE) {
         mRenderer->deleteSwapChain();
     }
     mRenderer->createSwapChain(mVulkanPointers.swapChainSupportDetails, nullptr, nullptr, mRenderer->getSwapChain());
-    */
 }
 
 void VulkanWindow::releaseSwapChainResources()
@@ -597,7 +576,7 @@ void VulkanWindow::releaseSwapChainResources()
     // It is important to finish the pending frame right here since this is the
     // last opportunity to act with all resources intact.
     vkDeviceWaitIdle(mVulkanPointers.device);
-
+    mInitialized = false;
     mRenderer->deleteSwapChain();
 }
 
@@ -607,17 +586,14 @@ void VulkanWindow::releaseResources()
     qDebug("releaseResources");
 
     // Before releasing resources it is important there aren't any pending work going.
-    mVulkanPointers.pDeviceFunctions->vkDeviceWaitIdle(mVulkanPointers.device);
+    vkDeviceWaitIdle(mVulkanPointers.device);
 
+    this->releaseSwapChainResources();
     mRenderer->deleteVertexBuffer();
     mRenderer->deleteUniformBuffers();
     mRenderer->deleteSyncObjects();
     mRenderer->deleteCommandPool();
     mRenderer->deleteGraphicsPipeline();
-
-    //if (enableValidationLayers) {
-    //    releaseDebugMesseger();
-    //}
 }
 
 /// <summary>
@@ -667,17 +643,7 @@ VkInstance VulkanWindow::createInstance() {
     qFatal("Failed to create Vulkan instance!");
     return VK_NULL_HANDLE;
 }
-/*
-/// <summary>
-/// Need to use deleteInstance function to delete Vulkan instance.
-/// </summary>
-/// <param name="instance"></param>
-void VulkanWindow::deleteInstance(VkInstance instance) {
 
-    vkDeviceWaitIdle(mVulkanPointers.device);
-    vkDestroyInstance(instance, nullptr);
-}
-*/
 /// <summary>
 /// This function collects necessary instance extensions. All of these extensions may not be able to 
 /// define in compile time, so we define them dynamically.

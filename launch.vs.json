@@ -5,19 +5,28 @@
     {
       "type": "default",
       "project": "CMakeLists.txt",
-      "projectTarget": "Vulkan_Simulator.exe",
-      "name": "Vulkan_Simulator.exe"
+      "projectTarget": "Vulkan_Simulator_Debug_Win",
+      "name": "Vulkan_Simulator_Debug.exe",
+      "noDebug": false
+    },
+    {
+      "type": "default",
+      "project": "CMakeLists.txt",
+      "projectTarget": "Vulkan_Simulator_Win",
+      "name": "Vulkan_Simulator.exe",
+      "noDebug": true
     },
     {
       "type": "cppgdb",
-      "name": "Vulkan_Simulator",
+      "name": "Vulkan_Simulator_Debug",
       "project": "CMakeLists.txt",
-      "projectTarget": "Vulkan_Simulator",
+      "projectTarget": "Vulkan_Simulator_Debug_Linux",
       "debuggerConfiguration": "gdb",
       "preDebugCommand": null,
       "externalConsole": true,
       "remoteMachineName": "192.168.10.64",
-      "program": "C:\\Users\\Mikael\\source\\repos\\mamannon\\Vulkan_Simulator\\out\\build\\Linux-GCC-Debug\\Vulkan_Simulator",
+      //"program": "C:\\Users\\Mikael\\source\\repos\\mamannon\\Vulkan_Simulator\\out\\build\\Linux-GCC-Debug\\Vulkan_Simulator",
+      "program": "/home/mikael/.vs/Vulkan_Simulator/out/build/debug/Linux-GCC-Debug/Vulkan_Simulator",
       "cwd": "${workspaceRoot}",
       "args": [],
       "env": {
@@ -45,8 +54,34 @@
 
       // RemotePrelaunchCommand does not work for me. To get debugging working, I need to write command below in 
       // the terminal of the Linux machine before starting debugging in Visual Studio.
-      "remotePrelaunchCommand": "gdbserver :1234 /home/mikael/.vs/Vulkan_Simulator/out/build/Linux-GCC-Debug/Vulkan_Simulator >& /dev/null",
-      "remotePrelaunchWait": "2000"
+      //"remotePrelaunchCommand": "gdbserver :1234 /home/mikael/.vs/Vulkan_Simulator/out/build/debug/Linux-GCC-Debug/Vulkan_Simulator >& /dev/null",
+      //"remotePrelaunchWait": "2000",
+      "noDebug": false
+    },
+    {
+      "type": "default",
+      "name": "Vulkan_Simulator",
+      "project": "CMakeLists.txt",
+      "projectTarget": "Vulkan_Simulator_Linux",
+      "externalConsole": true,
+      "remoteMachineName": "192.168.10.64",
+      //"program": "C:\\Users\\Mikael\\source\\repos\\mamannon\\Vulkan_Simulator\\out\\build\\Linux-GCC-Debug\\Vulkan_Simulator",
+      //"program": "/home/mikael/.vs/Vulkan_Simulator/out/build/release/Linux-GCC-Release/Vulkan_Simulator",
+      "cwd": "${workspaceRoot}",
+      "args": [],
+      "env": {
+        "DISPLAY": "0.0"
+      },
+      "setupCommands": [
+        {
+          "text": "set sysroot ."
+        },
+        {
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "noDebug": true
     }
   ]
 }

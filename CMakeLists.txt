@@ -15,12 +15,12 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 # This is both for 32 bit and 64 bit Windows.
 if(WIN32)
 
-  # These paths don''t work if they reside in the CMakeSettings.json file.
+  # These paths don't work if they reside in the CMakeSettings.json file.
   set(CMAKE_PREFIX_PATH "C:/Qt/6.8.1/msvc2022_64/lib/cmake;C:/VulkanSDK/1.3.296.0/cmake")
 
   # Specify to use C++ version 20 in sources of Vulkan_Simulator
   set(CMAKE_CXX_STANDARD 20)
-  set(CMAKE_CXX_STANDARD_REQUIRED YES)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(CMAKE_CXX_EXTENSIONS OFF)
 
   # This will create WinMain() entry point instead of main().
@@ -149,7 +149,7 @@ else()
     # Set C++ version 20 settings
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
-    # set(CMAKE_CXX17_STANDARD_COMPILE_OPTION "-std=c++17")
+    set(CMAKE_CXX_EXTENSIONS OFF)
     # set(CMAKE_CXX17_EXTENSION_COMPILE_OPTION "-std=gnu++17")
 
     # Executables fail to build with Qt 6 in the default configuration
@@ -193,11 +193,7 @@ else()
                 ${CMAKE_SOURCE_DIR}/shaders/frag.spv
                 ${CMAKE_CURRENT_BINARY_DIR}/frag.spv)
 
-    # Specify to use C++ version 17 in sources of Vulkan_Simulator
-    # target_compile_features(Vulkan_Simulator PUBLIC cxx_std_17)
-    # set_target_properties(Vulkan_Simulator PROPERTIES CXX_EXTENSIONS OFF)
-
-    # Add the Qt5 Widgets and other needed libraries for linking.
+    # Add the Qt6 Widgets and other needed libraries for linking.
     target_link_libraries(Vulkan_Simulator Qt6::Core Qt6::Widgets)
     target_link_libraries(Vulkan_Simulator Vulkan::Vulkan)
 
@@ -206,6 +202,24 @@ else()
     target_include_directories(Vulkan_Simulator PUBLIC ${STB_INCLUDE_DIRS})
     target_include_directories(Vulkan_Simulator PUBLIC ${GLM_INCLUDE_DIRS})
     target_include_directories(Vulkan_Simulator PUBLIC ${VULKAN_INCLUDE_DIRS})
+
+    # Copy necessary DLLs to the binary directory.
+    add_custom_command(TARGET Vulkan_Simulator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                "/usr/lib/x86_64-linux-gnu/libvulkan.so.1"
+                $<TARGET_FILE_DIR:Vulkan_Simulator>)
+    add_custom_command(TARGET Vulkan_Simulator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                "/home/mikael/Qt/6.8.2/gcc_64/lib/libQt6Core.so.6.8.2"
+                $<TARGET_FILE_DIR:Vulkan_Simulator>)
+    add_custom_command(TARGET Vulkan_Simulator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                "/home/mikael/Qt/6.8.2/gcc_64/lib/libQt6Gui.so.6.8.2"
+                $<TARGET_FILE_DIR:Vulkan_Simulator>)
+    add_custom_command(TARGET Vulkan_Simulator POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                "/home/mikael/Qt/6.8.2/gcc_64/lib/libQt6Widgets.so.6.8.2"
+                $<TARGET_FILE_DIR:Vulkan_Simulator>)
 
   endif()
 

@@ -165,6 +165,7 @@ struct SwapChainSupportDetails {
 };
 
 struct VulkanPointers {
+    bool resourcesDeleted = true;
     std::weak_ptr<VulkanWindow> vulkanWindow;
     std::weak_ptr<FileReader> fileReader;
     QVulkanDeviceFunctions* pDeviceFunctions = nullptr;

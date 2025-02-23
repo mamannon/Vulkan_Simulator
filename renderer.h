@@ -75,7 +75,8 @@ private:
 	std::vector<VkBuffer> mUniformBuffers;
 	std::vector<VkDeviceMemory> mUniformBuffersMemory;
 	std::vector<void*> mUniformBuffersMapped;
-	const std::chrono::system_clock::time_point mStartTime = std::chrono::system_clock::now();
+	//const std::chrono::system_clock::time_point mStartTime = std::chrono::system_clock::now();
+	const std::chrono::high_resolution_clock::time_point mStartTime = std::chrono::high_resolution_clock::now();
 	PipelineBuilder mPipelineBuilder;
 	VkPipeline mPipeline = VK_NULL_HANDLE;
 	VkCommandPool mCommandPool = VK_NULL_HANDLE;
@@ -87,6 +88,9 @@ private:
 	std::vector<VkSemaphore> mImageAvailableSemaphores;
 	std::vector<VkSemaphore> mRenderingCompleteSemaphores;
 	std::vector<VkFence> mRenderFences;
+	glm::mat4 mModelMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+	glm::mat4 mViewMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+	glm::mat4 mProjectionMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
 	struct UniformBufferObject {
 		glm::mat4 modelViewProjectionMatrix = glm::mat4(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);

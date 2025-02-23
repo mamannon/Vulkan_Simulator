@@ -2,11 +2,18 @@
 
 Multi platform application development, modern C++ and the new graphics API Vulkan (new in the sense that OpenGL is the old API...) create a mixture of challenges which are to be tackled in this project.
 
+
 ## Preface
 
 Chosen development tool Microsoft Visual Studio offers us a possibility to develop an application simultaneously for several different platforms using the same code base. This time chosen platforms are Windows and Linux, and I use CMake and Qt to enable multi platform development. Vulkan graphics API is used for 3D visualizing of glTF file contents.
 
-Currently the code renders correctly, but data reading from 3D file is not implemented yet.
+Current version does basic rendering correctly and it is possible to watch simple glTF files, but both rendering, file reading and user interface has serious limitations, for example:
+
+- Window resize is not implemented.
+- Materials and textures are not implemented.
+- Only GLTF files are readable, not GLB files.
+- The Linux version crashes in launch. Previously Vulkan_Simulator run in Linux, but now there are issues in environment settings.
+
 
 ## Requirements
 
@@ -23,6 +30,7 @@ On Windows machine you need Vulkan SDK and Qt 6.8.1 library installed on your co
 
 - Download and install Vulkan SDK from https://vulkan.lunarg.com/sdk/home#windows .
 
+
 Also on Linux machine you need Vulkan headers and Qt 6.8.1 library installed, among other libraries:
 
 - Install Qt library using Qt installation software https://www.qt.io/download-qt-installer-oss . After downloading yu need to give a permit to install in terminal with a command 'chmod +x qt-online-installer-linux-x64-4.8.1.run'. After that, double-click the qt-online-installer-linux-x64-4.8.1.run file in downloads folder. Select Qt version 6.8.2.
@@ -37,6 +45,7 @@ Also on Linux machine you need Vulkan headers and Qt 6.8.1 library installed, am
 
 
 CMake is the script language to orchestrate project build and you need to set correct absolute file paths to get things working.
+
 
 ## License
 

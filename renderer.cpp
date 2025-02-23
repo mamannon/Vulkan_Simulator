@@ -68,21 +68,12 @@ Renderer::Renderer(VulkanPointers& vulkanPointers) {
 /// SetProjectionMatrix function sets the projection matrix.
 /// </summary>
 /// <param name="proj">4x4 matrix according to the row order.</param>
-void Renderer::setProjectionMatrix(float* proj) {
-    /*
-       mUboMVPMatrices.projectionMatrix = glm::mat4x4(
+void Renderer::setProjectionMatrix(float* proj) { 
+    mProjectionMatrix = glm::mat4x4(
            proj[0], proj[1], proj[2], proj[3],
            proj[4], proj[5], proj[6], proj[7],
            proj[8], proj[9], proj[10], proj[11],
            proj[12], proj[13], proj[14], proj[15]);
-       */
-    /*
-    mUboMVPMatrices.projectionMatrix = glm::mat4x4(
-        proj[0], proj[4], proj[8], proj[12],
-        proj[1], proj[5], proj[9], proj[13],
-        proj[2], proj[6], proj[10], proj[14],
-        proj[3], proj[7], proj[11], proj[15]);
-        */
 }
 
 /// <summary>
@@ -90,46 +81,29 @@ void Renderer::setProjectionMatrix(float* proj) {
 /// </summary>
 /// <param name="view">Optional 4x4 matrix to set according to the row order.</param>
 void Renderer::setViewMatrix(float* view) {
-    /*
+    
     if (view != nullptr) {
 
         // If we are given a matrix.
-        mUboMVPMatrices.viewMatrix = glm::mat4x4(
+        mViewMatrix = glm::mat4x4(
             view[0], view[1], view[2], view[3],
             view[4], view[5], view[6], view[7],
             view[8], view[9], view[10], view[11],
             view[12], view[13], view[14], view[15]);
     }
     else {
-
+        
         // Define suitable view matrix according to the scene.
-        float z = std::max(std::abs(mMin.x), std::max(std::abs(mMin.y), std::abs(mMin.z))) * 10;
-        mUboMVPMatrices.viewMatrix = glm::mat4x4(1, 0, 0, 0,
-        0, 1, 0, 0.5*z,
-        0, 0, 1, 2*z,
-        0, 0, 0, 1);
+        if (std::shared_ptr ptr = mVulkanPointers.fileReader.lock()) {
+            glm::vec3 midPoint = ptr->getMin() + (ptr->getMax() - ptr->getMin()) / 2.0f;
+            float length = glm::length(ptr->getMax() - ptr->getMin());
+            glm::vec3 eye = midPoint + glm::vec3(length, length, length);
+            mViewMatrix = glm::lookAt(eye, midPoint, glm::vec3(0.0f, 0.0f, 1.0f));
+        }
+        else {
+            qFatal("FileReader object is empty.");
+        }
     }
-    */
-    /*
-    if (view != nullptr) {
-
-        // If we are given a matrix.
-        mUboMVPMatrices.viewMatrix = glm::mat4x4(
-            view[0], view[4], view[8], view[12],
-            view[1], view[5], view[9], view[13],
-            view[2], view[6], view[10], view[14],
-            view[3], view[7], view[11], view[15]);
-    }
-    else {
-
-        // Define a suitable view matrix according to the scene.
-        float z = std::max(std::abs(mMin.x), std::max(std::abs(mMin.y), std::abs(mMin.z))) * 10;
-        mUboMVPMatrices.viewMatrix = glm::mat4x4(1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0.5, 2, 1);
-    }
-    */
 }
 
 /// <summary>
@@ -137,76 +111,42 @@ void Renderer::setViewMatrix(float* view) {
 /// </summary>
 /// <param name="model">Optional 4x4 matrix according to the row order.</param>
 void Renderer::setModelMatrix(float* model) {
-    /*
+    
     if (model != nullptr) {
+
         // If we are given a matrix.
-        mUboMVPMatrices.modelMatrix = glm::mat4x4(
+        mModelMatrix = glm::mat4x4(
             model[0], model[1], model[2], model[3],
             model[4], model[5], model[6], model[7],
             model[8], model[9], model[10], model[11],
             model[12], model[13], model[14], model[15]);
     }
     else {
+        
+        // Get decent time step.
+        //static auto startTime = std::chrono::high_resolution_clock::now();
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - mStartTime).count();
 
-        // Create a cumulative rotation around the y-axis with 5.729 degrees ie 0.1
-        // radians per 0.1 seconds. This should be constant rotation between different
-        // computers with regard to speed.
-        auto currentTime = std::chrono::system_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>
-            (currentTime - mStartTime).count();
-        float rotation = 0.1 * time;
-        glm::mat4x4 temp = glm::mat4x4(
-            std::cos(rotation), 0, std::sin(rotation), 0,
-            0, 1, 0, 0,
-            -std::sin(rotation), 0, std::cos(rotation), 0,
-            0, 0, 0, 1);
-        mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
+        // Rotation center should be in the middle of the object, not necessarily the origo of 3D space.
+        glm::vec3 rotationCenter(0.0f, 0.0f, 0.0f);
+        if (std::shared_ptr ptr = mVulkanPointers.fileReader.lock()) {
+            rotationCenter = ptr->getMin() + (ptr->getMax() - ptr->getMin()) / 2.0f;
+        }
+        else {
+            qFatal("FileReader object is empty.");
+        }
 
-        // Rotation center should be in the middle of the object, not the origo of 3D space.
-        // We need to translate the rotation center to the middle of the object.
-        glm::vec3 rotationCenter = mMin + (mMax - mMin) /= 2;
-        temp = glm::mat4x4(1, 0, 0, rotationCenter.x,
-            0, 1, 0, rotationCenter.y,
-            0, 0, 1, rotationCenter.z,
-            0, 0, 0, 1);
-        mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
+        // Translate the object to the origin.
+        glm::mat4 T_neg = glm::translate(glm::mat4(1.0f), -rotationCenter);
+
+        // Rotate around the origin.
+        glm::mat4 R = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // Translate the object back to its original position.
+        glm::mat4 T_pos = glm::translate(glm::mat4(1.0f), rotationCenter);
+        mModelMatrix = T_pos * R * T_neg;
     }
-    */
-    /*
-    if (model != nullptr) {
-        // If we are given a matrix.
-        mUboMVPMatrices.modelMatrix = glm::mat4x4(
-            model[0], model[4], model[8], model[12],
-            model[1], model[5], model[9], model[13],
-            model[2], model[6], model[10], model[14],
-            model[3], model[7], model[11], model[15]);
-    }
-    else {
-
-        // Create a cumulative rotation around the y-axis with 5.729 degrees ie 0.1 
-        // radians per 0.1 seconds. This should be constant rotation between different
-        // computers with regard to speed.
-        auto currentTime = std::chrono::system_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>
-            (currentTime - mStartTime).count();
-        float rotation = 0.1 * time;
-        glm::mat4x4 temp = glm::mat4x4(
-            std::cos(rotation), 0, -std::sin(rotation), 0,
-            0, 1, 0, 0,
-            std::sin(rotation), 0, std::cos(rotation), 0,
-            0, 0, 0, 1);
-        mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
-
-        // Rotation center should be in the middle of the object, not the origo of 3D space.
-        // We need to translate the rotation center to the middle of the object.
-        glm::vec3 rotationCenter = mMin + (mMax - mMin) /= 2;
-        temp = glm::mat4x4(1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            rotationCenter.x, rotationCenter.y, rotationCenter.z, 1);
-        mUboMVPMatrices.modelMatrix = temp * mUboMVPMatrices.modelMatrix;
-    }
-    */
 }
 
 /// <summary>
@@ -487,23 +427,23 @@ void Renderer::deleteUniformBuffers() {
 /// </summary>
 void Renderer::updateUniformBuffer() {
 
-    // This is just an easy way to get decent time step for testing.
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
+    /*
     // These are temporary testing.
     glm::mat4 modelMatrix = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::mat4 viewMatrix = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     glm::mat4 projectionMatrix = glm::perspective(glm::radians(45.0f),
         mSwapChainRes.swapChainImageSize.width / (float)mSwapChainRes.swapChainImageSize.height, 0.1f, 10.0f);
     projectionMatrix[1][1] *= -1;
-    mUboMVPMatrices.modelViewProjectionMatrix = projectionMatrix * viewMatrix * modelMatrix;
+    */
+    mUboMVPMatrices.modelViewProjectionMatrix = mProjectionMatrix * mViewMatrix * mModelMatrix;
 
     // Update uniform buffer with the mUboMVPMatrices struct.
     // Uniform buffer creation step 10.
-    std::memcpy(mUniformBuffersMapped[mCurrentFrame],
-        &mUboMVPMatrices, sizeof(UniformBufferObject));
+    if (mUniformBuffers[mCurrentFrame] != VK_NULL_HANDLE) {
+        std::memcpy(mUniformBuffersMapped[mCurrentFrame],
+            &mUboMVPMatrices, sizeof(UniformBufferObject));
+    }
 }
 
 /// <summary>
@@ -511,7 +451,10 @@ void Renderer::updateUniformBuffer() {
 /// </summary>
 void Renderer::render() {
 
-    // First set model matrix to rotate the object and after that update uniforms.
+    // First ensure we have swapchain.
+    if (mSwapChainRes.swapChain == VK_NULL_HANDLE) return;
+
+    // Set model matrix to rotate the object and after that update uniforms.
     this->setModelMatrix();
     this->updateUniformBuffer();
 
@@ -791,7 +734,6 @@ void Renderer::createGraphicsPipeline() {
 /// This function destroys Pipeline and its PipelineLayout and releases their memory.
 /// </summary>
 void Renderer::deleteGraphicsPipeline() {
-
     if (mPipeline == VK_NULL_HANDLE) return;
 
     mVulkanPointers.pDeviceFunctions->vkDestroyPipeline(mVulkanPointers.device,
@@ -1291,12 +1233,13 @@ void Renderer::deleteSwapChain() {
         mVulkanPointers.vkDestroySwapchainKHR(mVulkanPointers.device, mSwapChainRes.swapChain, nullptr);
         mSwapChainRes.swapChain = VK_NULL_HANDLE;
     }
+    else {
+        return;
+    }
     for (int i = 0; i < mSwapChainRes.swapChainImageCount; ++i) {
         if (mSwapChainRes.swapChainImageViews[i]) {
             mVulkanPointers.pDeviceFunctions->vkDestroyImageView(mVulkanPointers.device,
                 mSwapChainRes.swapChainImageViews[i], nullptr);
-            //mVulkanPointers.pDeviceFunctions->vkDestroyImage(mVulkanPointers.device,
-            //    mSwapChainRes.swapChainImages[i], nullptr);
             mSwapChainRes.swapChainImageViews[i] = VK_NULL_HANDLE;
             mVulkanPointers.pDeviceFunctions->vkDestroyFramebuffer(mVulkanPointers.device,
                 mSwapChainRes.swapChainFrameBuffers[i], nullptr);
