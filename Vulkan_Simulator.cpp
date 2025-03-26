@@ -457,7 +457,7 @@ void VulkanWindow::refresh() {
 /// <param name=""></param>
 void VulkanWindow::resizeEvent(QResizeEvent*) {
     // TODO: Implement this.
-    qFatal("ResizeEvent is not implemented!");
+    qInfo("ResizeEvent is not implemented!");
 }
 
 /// <summary>
