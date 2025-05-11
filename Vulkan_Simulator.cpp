@@ -236,7 +236,7 @@ void VulkanWindow::init()
         mVulkanPointers.swapChainSupportDetails.presentModes.size() == 0) {
         qFatal("SwapChainSupportDetails data missing!");
     }
-    mRenderer = std::make_unique<Renderer>(Renderer(mVulkanPointers));
+    mRenderer = std::make_unique<Renderer>(mVulkanPointers);
 
     // Init the necessary Vulkan stuff.
     mRenderer->setViewMatrix();
